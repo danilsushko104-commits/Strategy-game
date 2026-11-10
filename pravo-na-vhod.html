@@ -161,6 +161,7 @@
 #pravo-na-vhod .pv-hero h1 span { display: block; }
 #pravo-na-vhod .pv-hero h1 span + span { color: var(--pv-blue); }
 #pravo-na-vhod .pv-hero-text p { max-width: 37ch; font-size: clamp(16px, 1.5vw, 20px); line-height: 1.45; }
+#pravo-na-vhod .pv-hero-text .pv-button { margin-top: 20px; }
 #pravo-na-vhod .pv-hero-art {
   position: relative;
   display: grid;
@@ -323,7 +324,7 @@
   grid-template-columns: repeat(auto-fit,minmax(min(100%,170px),1fr));
   gap: 10px;
   padding: 0;
-  margin: 0;
+  margin: 18px 0 0;
   border: 0;
   min-width: 0;
 }
@@ -343,10 +344,13 @@
 #pravo-na-vhod .pv-choice input:disabled + span { border-color: #b5abb0; color: var(--pv-muted); background: #eee7de; cursor: not-allowed; }
 #pravo-na-vhod .pv-choice input:disabled + span .pv-radio-mark { border-color: #8b818c; }
 #pravo-na-vhod .pv-choice-top { display: flex; align-items: center; justify-content: space-between; gap: 7px; margin-bottom: 3px; }
+#pravo-na-vhod .pv-choice-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; }
 #pravo-na-vhod .pv-choice-title { display: block; font-weight: 850; font-size: clamp(17px,1.8vw,20px); line-height: 1.1; letter-spacing: -.025em; overflow-wrap: anywhere; }
 #pravo-na-vhod .pv-choice-text, #pravo-na-vhod .pv-lock { display: block; font-size: 13px; line-height: 1.38; }
 #pravo-na-vhod .pv-lock { margin-top: auto; padding-top: 5px; color: var(--pv-negative); font-weight: 700; }
 #pravo-na-vhod .pv-cost { padding: 3px 6px; border: 1px solid var(--pv-line); background: var(--pv-white); color: var(--pv-ink); font-size: 11px; letter-spacing: 0; white-space: nowrap; }
+#pravo-na-vhod .pv-commit--decision { padding: 12px; border: 1px solid var(--pv-ink); background: var(--pv-paper); }
+#pravo-na-vhod .pv-commit--decision p { color: var(--pv-ink); font-size: 14px; }
 #pravo-na-vhod .pv-dossier { margin-block: 14px; padding: 11px 13px; background: var(--pv-lilac); border: 1px solid var(--pv-ink); }
 #pravo-na-vhod .pv-dossier .pv-actions { margin-top: 8px; }
 #pravo-na-vhod .pv-dossier p { margin-top: 4px; font-size: 14px; }
@@ -521,6 +525,7 @@
   #pravo-na-vhod .pv-fields { grid-template-columns: 1fr; }
   #pravo-na-vhod .pv-choices { grid-template-columns: 1fr; }
   #pravo-na-vhod .pv-choice-card { min-height: 0; }
+  #pravo-na-vhod .pv-commit--decision .pv-button { width: 100%; }
   #pravo-na-vhod .pv-stage-head::after { width: 116px; height: 116px; top: -39px; }
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -1403,6 +1408,7 @@
           <span class="pv-kicker pv-mono">Семинар 05&nbsp;/ Деловая игра</span>
           <h1 id="pv-title" tabindex="-1">${CASE.coverLines.map((line) => "<span>" + t(line) + "</span>").join(" ")}</h1>
           <p>Бюджет — ${CONFIG.START_BUDGET}&nbsp;жет. ${t(CASE.coverText)}</p>
+          ${action("Выбрать команду", "choose-team", "primary")}
         </div>
         <div class="pv-hero-art" aria-hidden="true">
           <span class="pv-art-code pv-art-code--top pv-mono">Досье 05&nbsp;/ Контур</span>
@@ -1488,7 +1494,7 @@
               <span id="pv-enter-label">${t(enterLabel(slots.get(view.team)))}</span>
               <span class="pv-glyph" aria-hidden="true">↗</span>
             </button>
-            ${action("Загрузить JSON", "import")}
+            ${action("Восстановить из JSON", "import")}
           </div>
           <p>У&nbsp;каждой команды своё сохранение. Для продолжения на&nbsp;другом устройстве загрузите файл JSON.</p>
         </div>
@@ -1557,8 +1563,11 @@
       <input type="radio" name="pv-choice" value="${option.id}"${disabled}${checked}${disabled ? ' aria-describedby="pv-lock-' + option.id + '"' : ""}>
       <span class="pv-choice-card">
         <span class="pv-choice-top">
-          <span class="pv-mono pv-subtle">${option.mark ? "Рынок " + option.mark : "Вариант"}</span>
-          <span class="pv-cost pv-mono">${option.cost}&nbsp;жет.</span>
+          <span class="pv-choice-meta">
+            <span class="pv-cost pv-mono">${option.cost}&nbsp;жет.</span>
+            ${option.mark ? `<span class="pv-mono pv-subtle">Рынок ${option.mark}</span>` : ""}
+            ${option.blocked ? '<span class="pv-mono pv-subtle">Недоступно</span>' : ""}
+          </span>
           <span class="pv-radio-mark" aria-hidden="true"></span>
         </span>
         <span class="pv-choice-title">${t(option.title)}</span>
@@ -1575,9 +1584,14 @@
     return " Объясните, как штаб будет контролировать подрядчика.";
   }
 
+  function choiceHint(option, tokens) {
+    if (!option) return "Выберите вариант, чтобы увидеть расход и остаток жетонов.";
+    return `Расход: ${option.cost}\u00a0жет. Остаток после фиксации: ${tokens - option.cost}\u00a0жет.`;
+  }
+
   function roundScreen(round, record, progress) {
     const options = getOptions(round, progress);
-    const selected = options.some((option) => option.id === view.choice && !option.blocked);
+    const selected = options.find((option) => option.id === view.choice && !option.blocked);
     const defaultTitle = options.find(({ id }) => id === round.default).title;
     const intro = round.event
       ? `<div class="pv-event"><p class="pv-mono">Сводка для совета</p><p>${t(round.intro)}</p></div>`
@@ -1591,17 +1605,15 @@
         disclosure("Сравнить три страны", countryCards()) : ""}
       ${round.id === "R3" ? dossierCard(record, progress) : ""}
       ${worksheet(round, record)}
-      <div class="pv-commit">
-        <fieldset class="pv-choices" style="width:100%">
-          <legend>Решение команды</legend>
-          ${options.map(optionCard).join("")}
-        </fieldset>
-      </div>
-      <div class="pv-commit">
-        <button class="pv-button pv-button--primary" type="button" data-action="commit" id="pv-commit-button" ${selected ? "" : "disabled"}>
+      <fieldset class="pv-choices">
+        <legend>Решение команды</legend>
+        ${options.map(optionCard).join("")}
+      </fieldset>
+      <div class="pv-commit pv-commit--decision">
+        <p id="pv-choice-hint" role="status">${escapeText(choiceHint(selected, progress.tokens))}</p>
+        <button class="pv-button pv-button--primary" type="button" data-action="commit" id="pv-commit-button" aria-describedby="pv-choice-hint" ${selected ? "" : "disabled"}>
           Зафиксировать решение <span class="pv-glyph" aria-hidden="true">↗</span>
         </button>
-        <p id="pv-choice-hint">${selected ? t("Жетоны будут списаны при фиксации.") : "Выберите доступный вариант. Решение попадёт в&nbsp;журнал."}</p>
       </div>
       ${disclosure("Действие ведущего, если время вышло",
         `<p>Вариант по&nbsp;умолчанию — ${t(defaultTitle)}${round.id === "R3" ? " без досье" : ""}.</p>
@@ -1621,8 +1633,8 @@
         </div>
         ${checkpoint ? `<div class="pv-record pv-checkpoint">
           <span class="pv-mono">Контрольная точка&nbsp;/ Семинар 1</span>
-          <h3>Сохраните маршрут</h3>
-          <p>Скачайте JSON, чтобы продолжить с&nbsp;R5 на&nbsp;другом устройстве, и&nbsp;TXT для ведущего.</p>
+          <h3>Сохраните партию перед семинаром 2</h3>
+          <p>JSON нужен для продолжения игры на&nbsp;другом устройстве. TXT&nbsp;— сводка для ведущего.</p>
           <div class="pv-actions">${downloadActions()}</div>
         </div>` : ""}
         ${worksheet(round, record)}
@@ -1960,6 +1972,11 @@
 
   const controls = {
     enter: enterTeam,
+    "choose-team": () => {
+      const heading = root.querySelector("#pv-team-title");
+      heading.focus({ preventScroll: true });
+      heading.scrollIntoView({ block: "start", behavior: "instant" });
+    },
     home: async () => { await noteWrites; showHome(); },
     materials: openMaterials,
     "close-materials": () => ui.materials.close(),
@@ -1987,11 +2004,14 @@
       return;
     }
     if (input.name === "pv-choice") {
-      view.choice = input.value;
       const button = root.querySelector("#pv-commit-button");
       if (!button) return;
+      const round = ROUNDS[view.record.history.length];
+      const option = getOptions(round, view.progress).find((item) => item.id === input.value && !item.blocked);
+      if (!option) return;
+      view.choice = option.id;
       button.disabled = false;
-      root.querySelector("#pv-choice-hint").textContent = "Жетоны будут списаны при фиксации.";
+      root.querySelector("#pv-choice-hint").textContent = choiceHint(option, view.progress.tokens);
       return;
     }
     if (input === ui.file) {
