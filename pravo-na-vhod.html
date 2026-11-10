@@ -1,0 +1,2037 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5efe3">
+  <title>Право на вход — стратегическая игра</title>
+  <style>html { background: #f5efe3; } body { margin: 0; }</style>
+</head>
+<body>
+<!-- НАЧАЛО БЛОКА T123
+  Тильда: добавьте «Другое» → T123 «HTML-код». Вставьте код от этой отметки
+  до «КОНЕЦ БЛОКА T123» включительно. Сохраните блок и опубликуйте страницу.
+  Вставляйте один блок игры на страницу.
+
+  КАРТА КОДА (найдите название через Ctrl+F)
+  01. ДИЗАЙН — цвета, шрифты, размеры и оформление игровых плашек.
+  02. НАСТРОЙКИ — бюджет, цены, команды, версия и имя хранилища.
+  03. СЦЕНАРИЙ — страны, досье, раунды, ответы, рабочий лист и тексты.
+  04. ПРАВИЛА — расчёт цен, доступности, последствий и финалов.
+  05. СОХРАНЕНИЕ — localStorage, файлы JSON/TXT и восстановление.
+  06. ИНТЕРФЕЙС — разметка экранов и обработчики действий.
+
+  Сохранения: localStorage["pravo-na-vhod:v1:team:1"] (последнее число — команда).
+  JSON и TXT скачиваются в папку загрузок, выбранную в настройках браузера.
+  Для копии игры задайте новый STORAGE_PREFIX. При правке правил поднимите VERSION.
+-->
+<style>
+/* 01. ДИЗАЙН. Основные цвета и размеры меняются здесь. */
+#pravo-na-vhod {
+  --pv-paper: #f5efe3;
+  --pv-white: #fffaf0;
+  --pv-ink: #1b1829;
+  --pv-muted: #5e5669;
+  --pv-line: #c8c0b4;
+  --pv-blue: #303cd7;
+  --pv-orange: #ff7455;
+  --pv-lime: #def576;
+  --pv-lilac: #dcd8ff;
+  --pv-negative: #982b2a;
+  --pv-serif: Georgia, "Times New Roman", serif;
+  --pv-sans: Arial, "Helvetica Neue", sans-serif;
+  --pv-mono: "Courier New", monospace;
+  --pv-width: 1240px;
+  --pv-shadow: 5px 5px 0 var(--pv-ink);
+  background: var(--pv-paper);
+  color: var(--pv-ink);
+  font: 400 16px/1.55 var(--pv-sans);
+  isolation: isolate;
+  min-width: 0;
+  text-align: left;
+  -webkit-text-size-adjust: 100%;
+}
+#pravo-na-vhod, #pravo-na-vhod *, #pravo-na-vhod *::before, #pravo-na-vhod *::after { box-sizing: border-box; }
+#pravo-na-vhod [hidden] { display: none !important; }
+#pravo-na-vhod :is(h1,h2,h3,h4,p,dl,dd,ol,ul) { margin: 0; color: inherit; }
+#pravo-na-vhod :is(button,input,textarea) { font: inherit; color: inherit; }
+#pravo-na-vhod button { touch-action: manipulation; }
+#pravo-na-vhod :is(button,summary) { cursor: pointer; }
+#pravo-na-vhod button:disabled { cursor: not-allowed; }
+#pravo-na-vhod :focus-visible { outline: 3px solid var(--pv-blue); outline-offset: 4px; }
+#pravo-na-vhod :is(h1,h2,h3,h4) { overflow-wrap: anywhere; }
+#pravo-na-vhod :is(h1,h2,h3,h4):focus { outline: none; }
+#pravo-na-vhod .pv-shell { width: min(var(--pv-width), calc(100% - 96px)); margin-inline: auto; }
+#pravo-na-vhod .pv-mono {
+  font: 700 12px/1.35 var(--pv-mono);
+  letter-spacing: .075em;
+  text-transform: uppercase;
+}
+#pravo-na-vhod .pv-subtle { color: var(--pv-muted); }
+#pravo-na-vhod .pv-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+#pravo-na-vhod .pv-top { border-top: 5px solid var(--pv-ink); border-bottom: 1px solid var(--pv-ink); }
+#pravo-na-vhod .pv-top-inner, #pravo-na-vhod .pv-footer-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+#pravo-na-vhod .pv-top-inner { min-height: 73px; }
+#pravo-na-vhod .pv-brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+#pravo-na-vhod .pv-brand-logo {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--pv-white);
+  background: var(--pv-ink);
+}
+#pravo-na-vhod .pv-brand-logo svg { width: 25px; height: 25px; }
+#pravo-na-vhod .pv-brand-name { display: block; font-size: 15px; font-weight: 800; line-height: 1.2; }
+#pravo-na-vhod .pv-brand .pv-mono { display: block; margin-top: 4px; font-size: 10px; }
+#pravo-na-vhod .pv-tools, #pravo-na-vhod .pv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+#pravo-na-vhod .pv-tools { justify-content: end; }
+#pravo-na-vhod .pv-button {
+  display: inline-flex;
+  min-height: 46px;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  border: 1.5px solid var(--pv-ink);
+  border-radius: 0;
+  padding: 9px 15px;
+  background: var(--pv-white);
+  color: var(--pv-ink);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+}
+#pravo-na-vhod .pv-button:hover:not(:disabled) { background: var(--pv-lilac); }
+#pravo-na-vhod .pv-button:disabled { opacity: .55; }
+#pravo-na-vhod .pv-button--primary {
+  min-height: 52px;
+  padding: 10px 19px;
+  background: var(--pv-ink);
+  color: var(--pv-white);
+  box-shadow: 3px 3px 0 var(--pv-blue);
+  font-size: 15px;
+}
+#pravo-na-vhod .pv-button--primary:hover:not(:disabled) { background: var(--pv-blue); }
+#pravo-na-vhod .pv-button--quiet { min-height: 44px; padding: 8px 12px; background: transparent; }
+#pravo-na-vhod .pv-button--text { border-color: transparent; background: transparent; text-decoration: underline; text-underline-offset: 3px; }
+#pravo-na-vhod .pv-button--danger { border-color: var(--pv-negative); color: var(--pv-negative); }
+#pravo-na-vhod .pv-button--danger:hover { background: #f9ddd3; }
+#pravo-na-vhod .pv-glyph { font-size: 1.2em; line-height: 1; }
+#pravo-na-vhod .pv-main { padding-block: 28px 54px; }
+#pravo-na-vhod .pv-hero { border: 1.5px solid var(--pv-ink); box-shadow: var(--pv-shadow); }
+#pravo-na-vhod .pv-hero-grid { display: grid; grid-template-columns: 1.08fr 1fr; }
+#pravo-na-vhod .pv-hero-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  justify-content: center;
+  min-height: 354px;
+  padding: clamp(24px, 4.1vw, 57px);
+  background: var(--pv-white);
+}
+#pravo-na-vhod .pv-kicker {
+  display: inline-block;
+  padding: 6px 9px 5px;
+  border: 1.5px solid var(--pv-ink);
+  background: var(--pv-lime);
+}
+#pravo-na-vhod .pv-hero h1 {
+  margin: 21px 0 16px;
+  font-size: clamp(68px, 8.1vw, 115px);
+  font-weight: 900;
+  line-height: .82;
+  letter-spacing: -.09em;
+}
+#pravo-na-vhod .pv-hero h1 span { display: block; }
+#pravo-na-vhod .pv-hero h1 span + span { color: var(--pv-blue); }
+#pravo-na-vhod .pv-hero-text p { max-width: 37ch; font-size: clamp(16px, 1.5vw, 20px); line-height: 1.45; }
+#pravo-na-vhod .pv-hero-art {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  min-width: 0;
+  place-items: center;
+  border-left: 1.5px solid var(--pv-ink);
+  background: var(--pv-blue);
+}
+#pravo-na-vhod .pv-hero-art svg { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
+#pravo-na-vhod .pv-art-code { position: absolute; z-index: 1; color: var(--pv-white); }
+#pravo-na-vhod .pv-art-code--top { top: 17px; left: 18px; }
+#pravo-na-vhod .pv-art-code--bottom { right: 17px; bottom: 15px; font-size: 10px; }
+#pravo-na-vhod .pv-tape { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border-top: 1.5px solid var(--pv-ink); }
+#pravo-na-vhod .pv-tape span {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 16px;
+  background: var(--pv-white);
+  border-right: 1px solid var(--pv-ink);
+}
+#pravo-na-vhod .pv-tape span:last-child { border-right: 0; background: var(--pv-lime); }
+#pravo-na-vhod .pv-tape b { font: 800 22px/1 var(--pv-sans); letter-spacing: -.05em; }
+#pravo-na-vhod .pv-tape small { font-size: 11px; letter-spacing: .035em; }
+#pravo-na-vhod .pv-entry { margin-top: 38px; }
+#pravo-na-vhod .pv-section-head { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+#pravo-na-vhod .pv-section-head h2, #pravo-na-vhod .pv-board-title {
+  font-weight: 850;
+  font-size: clamp(29px, 4vw, 47px);
+  letter-spacing: -.055em;
+  line-height: 1;
+}
+#pravo-na-vhod .pv-entry-panel { border: 1.5px solid var(--pv-ink); background: var(--pv-white); padding: clamp(14px, 2.5vw, 26px); }
+#pravo-na-vhod .pv-teams { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; padding: 0; margin: 0; border: 0; min-width: 0; }
+#pravo-na-vhod .pv-team, #pravo-na-vhod .pv-choice { display: block; position: relative; cursor: pointer; min-width: 0; }
+#pravo-na-vhod .pv-team input, #pravo-na-vhod .pv-choice input { position: absolute; opacity: 0; width: 1px; height: 1px; inset: 12px auto auto 12px; }
+#pravo-na-vhod .pv-team-card {
+  display: grid;
+  align-content: start;
+  min-height: 112px;
+  padding: 11px 13px;
+  border: 1.5px solid var(--pv-ink);
+  background: var(--pv-paper);
+}
+#pravo-na-vhod .pv-team-number { display: flex; justify-content: space-between; align-items: center; font-size: 32px; line-height: 1; font-weight: 900; letter-spacing: -.07em; }
+#pravo-na-vhod .pv-team-status { display: block; font-size: 13px; line-height: 1.35; margin-top: 7px; }
+#pravo-na-vhod :is(.pv-team,.pv-choice) input:focus-visible + span { outline: 3px solid var(--pv-blue); outline-offset: 3px; }
+#pravo-na-vhod .pv-team input:checked + span { background: var(--pv-lime); box-shadow: 3px 3px 0 var(--pv-ink); }
+#pravo-na-vhod .pv-team:hover .pv-team-card { border-color: var(--pv-blue); }
+#pravo-na-vhod .pv-radio-mark {
+  flex: 0 0 17px;
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid var(--pv-ink);
+  border-radius: 50%;
+  background: var(--pv-white);
+}
+#pravo-na-vhod :is(.pv-team,.pv-choice) input:checked + span .pv-radio-mark {
+  background: var(--pv-ink);
+  box-shadow: inset 0 0 0 3px var(--pv-white);
+}
+#pravo-na-vhod .pv-entry-foot, #pravo-na-vhod .pv-commit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+#pravo-na-vhod .pv-entry-foot p, #pravo-na-vhod .pv-commit p { max-width: 43ch; font-size: 13px; line-height: 1.45; color: var(--pv-muted); }
+#pravo-na-vhod .pv-board-head { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 17px; }
+#pravo-na-vhod .pv-board-head .pv-board-title { margin: 5px 0 6px; }
+#pravo-na-vhod .pv-budget {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 10px;
+  padding: 7px 12px;
+  background: var(--pv-lime);
+  border: 1.5px solid var(--pv-ink);
+  box-shadow: 3px 3px 0 var(--pv-ink);
+}
+#pravo-na-vhod .pv-budget strong { font-size: 36px; font-weight: 900; line-height: 1; letter-spacing: -.075em; }
+#pravo-na-vhod .pv-budget .pv-mono { line-height: 1.1; font-size: 10px; }
+#pravo-na-vhod .pv-progress {
+  display: grid;
+  grid-template-columns: repeat(7,minmax(0,1fr));
+  border: 1px solid var(--pv-ink);
+  padding: 0;
+  margin-bottom: 22px;
+  list-style: none;
+  background: var(--pv-white);
+}
+#pravo-na-vhod .pv-progress li { display: grid; grid-template-columns: auto 1fr; gap: 4px 7px; padding: 10px 9px; align-items: center; border-right: 1px solid var(--pv-line); min-width: 0; }
+#pravo-na-vhod .pv-progress li:last-child { border-right: 0; }
+#pravo-na-vhod .pv-progress .pv-step-name { font-size: 12px; line-height: 1.1; }
+#pravo-na-vhod .pv-progress .pv-step-done { background: var(--pv-lilac); }
+#pravo-na-vhod .pv-progress [aria-current="step"] { color: var(--pv-white); background: var(--pv-blue); }
+#pravo-na-vhod .pv-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(255px,292px); align-items: start; gap: 20px; }
+#pravo-na-vhod .pv-stage, #pravo-na-vhod .pv-sidebar-card {
+  min-width: 0;
+  border: 1.5px solid var(--pv-ink);
+  background: var(--pv-white);
+}
+#pravo-na-vhod .pv-stage { box-shadow: var(--pv-shadow); }
+#pravo-na-vhod .pv-stage-head {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 10px;
+  align-content: center;
+  min-height: 148px;
+  padding: 22px clamp(15px, 3.4vw, 34px);
+  background: var(--pv-blue);
+  color: var(--pv-white);
+}
+#pravo-na-vhod .pv-stage-head--event { background: var(--pv-orange); color: var(--pv-ink); }
+#pravo-na-vhod .pv-stage-head--review { background: var(--pv-lilac); color: var(--pv-ink); }
+#pravo-na-vhod .pv-stage-head--final { background: var(--pv-lime); color: var(--pv-ink); }
+#pravo-na-vhod .pv-stage-head::after {
+  content: "";
+  position: absolute;
+  top: -58px;
+  right: -36px;
+  width: 185px;
+  height: 185px;
+  border: 1px solid currentColor;
+  box-shadow: 0 0 0 12px transparent, 0 0 0 13px currentColor, 0 0 0 25px transparent, 0 0 0 26px currentColor;
+  transform: rotate(29deg);
+  opacity: .26;
+  pointer-events: none;
+}
+#pravo-na-vhod .pv-stage-head > * { position: relative; z-index: 1; max-width: 30ch; }
+#pravo-na-vhod .pv-stage-head h2 { font-size: clamp(30px, 4.9vw, 56px); font-weight: 900; letter-spacing: -.055em; line-height: 1; }
+#pravo-na-vhod .pv-stage-body { padding: clamp(14px, 2.7vw, 28px); }
+#pravo-na-vhod .pv-intro { display: grid; gap: 8px; margin-bottom: 17px; }
+#pravo-na-vhod .pv-intro p { max-width: 70ch; }
+#pravo-na-vhod .pv-task {
+  margin-block: 13px;
+  border-left: 4px solid var(--pv-blue);
+  padding: 9px 11px;
+  background: var(--pv-paper);
+  font-size: 14px;
+}
+#pravo-na-vhod .pv-task strong { display: block; margin-bottom: 3px; }
+#pravo-na-vhod .pv-event {
+  position: relative;
+  margin-bottom: 16px;
+  padding: 13px 15px;
+  border: 1px solid var(--pv-ink);
+  border-left: 6px solid var(--pv-orange);
+  background: #ffe8dc;
+}
+#pravo-na-vhod .pv-event .pv-mono { margin-bottom: 4px; }
+#pravo-na-vhod .pv-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(min(100%,170px),1fr));
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+#pravo-na-vhod .pv-choices legend { padding: 0; margin-bottom: 9px; font-weight: 800; font-size: 17px; }
+#pravo-na-vhod .pv-choice-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 150px;
+  height: 100%;
+  gap: 7px;
+  padding: 11px;
+  border: 1.5px solid var(--pv-ink);
+  background: var(--pv-paper);
+}
+#pravo-na-vhod .pv-choice:hover input:not(:disabled) + span { border-color: var(--pv-blue); }
+#pravo-na-vhod .pv-choice input:checked + span { background: var(--pv-lime); border-color: var(--pv-ink); box-shadow: 3px 3px 0 var(--pv-ink); }
+#pravo-na-vhod .pv-choice input:disabled + span { border-color: #b5abb0; color: var(--pv-muted); background: #eee7de; cursor: not-allowed; }
+#pravo-na-vhod .pv-choice input:disabled + span .pv-radio-mark { border-color: #8b818c; }
+#pravo-na-vhod .pv-choice-top { display: flex; align-items: center; justify-content: space-between; gap: 7px; margin-bottom: 3px; }
+#pravo-na-vhod .pv-choice-title { display: block; font-weight: 850; font-size: clamp(17px,1.8vw,20px); line-height: 1.1; letter-spacing: -.025em; overflow-wrap: anywhere; }
+#pravo-na-vhod .pv-choice-text, #pravo-na-vhod .pv-lock { display: block; font-size: 13px; line-height: 1.38; }
+#pravo-na-vhod .pv-lock { margin-top: auto; padding-top: 5px; color: var(--pv-negative); font-weight: 700; }
+#pravo-na-vhod .pv-cost { padding: 3px 6px; border: 1px solid var(--pv-line); background: var(--pv-white); color: var(--pv-ink); font-size: 11px; letter-spacing: 0; white-space: nowrap; }
+#pravo-na-vhod .pv-dossier { margin-block: 14px; padding: 11px 13px; background: var(--pv-lilac); border: 1px solid var(--pv-ink); }
+#pravo-na-vhod .pv-dossier .pv-actions { margin-top: 8px; }
+#pravo-na-vhod .pv-dossier p { margin-top: 4px; font-size: 14px; }
+#pravo-na-vhod .pv-record {
+  margin-bottom: 15px;
+  padding: 14px 16px;
+  border: 1.5px solid var(--pv-ink);
+  background: var(--pv-paper);
+}
+#pravo-na-vhod .pv-record h3 { margin: 2px 0 4px; font-size: clamp(21px,2.8vw,31px); line-height: 1.1; letter-spacing: -.035em; }
+#pravo-na-vhod .pv-record p + p { margin-top: 7px; }
+#pravo-na-vhod .pv-record .pv-mono { display: block; color: var(--pv-muted); }
+#pravo-na-vhod .pv-checkpoint { background: var(--pv-lime); }
+#pravo-na-vhod .pv-checkpoint .pv-actions { margin-top: 9px; }
+#pravo-na-vhod .pv-result-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-block: 14px; }
+#pravo-na-vhod .pv-result-metrics div { padding: 9px; border: 1px solid var(--pv-ink); background: var(--pv-paper); }
+#pravo-na-vhod .pv-result-metrics dt { font: 700 11px/1.2 var(--pv-mono); text-transform: uppercase; color: var(--pv-muted); }
+#pravo-na-vhod .pv-result-metrics dd { margin-top: 4px; font-size: 16px; line-height: 1.25; font-weight: 800; overflow-wrap: anywhere; }
+#pravo-na-vhod .pv-sidebar { display: grid; gap: 12px; }
+#pravo-na-vhod .pv-sidebar-card { padding: 13px; }
+#pravo-na-vhod .pv-sidebar-card h3 { font-size: 17px; line-height: 1.2; margin-bottom: 8px; }
+#pravo-na-vhod .pv-facts div { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.32fr); gap: 7px; padding-block: 7px; border-top: 1px solid var(--pv-line); font-size: 13px; line-height: 1.25; }
+#pravo-na-vhod .pv-facts dt { color: var(--pv-muted); }
+#pravo-na-vhod .pv-facts dd { font-weight: 700; overflow-wrap: anywhere; }
+#pravo-na-vhod .pv-sidebar-card .pv-actions { align-items: stretch; gap: 7px; }
+#pravo-na-vhod .pv-sidebar-card .pv-button { min-height: 44px; padding-inline: 10px; }
+#pravo-na-vhod .pv-sidebar-card .pv-subtle { margin-top: 8px; font-size: 13px; line-height: 1.4; }
+#pravo-na-vhod .pv-summary {
+  margin-top: 13px;
+  border: 1px solid var(--pv-line);
+  background: var(--pv-white);
+}
+#pravo-na-vhod .pv-summary summary {
+  padding: 10px 12px;
+  min-height: 44px;
+  font-weight: 750;
+  font-size: 14px;
+}
+#pravo-na-vhod .pv-summary[open] > summary { background: var(--pv-paper); border-bottom: 1px solid var(--pv-line); }
+#pravo-na-vhod .pv-detail-body { padding: 12px; }
+#pravo-na-vhod .pv-detail-body > p + p { margin-top: 7px; }
+#pravo-na-vhod .pv-country-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+#pravo-na-vhod .pv-country {
+  min-width: 0;
+  border: 1px solid var(--pv-ink);
+  background: var(--pv-white);
+}
+#pravo-na-vhod .pv-country header { padding: 8px 10px; background: var(--pv-lilac); border-bottom: 1px solid var(--pv-ink); }
+#pravo-na-vhod .pv-country:nth-child(2) header { background: var(--pv-orange); }
+#pravo-na-vhod .pv-country:nth-child(3) header { background: var(--pv-lime); }
+#pravo-na-vhod .pv-country h3 { font-size: 20px; line-height: 1.15; letter-spacing: -.03em; }
+#pravo-na-vhod .pv-country dl { padding-inline: 10px; }
+#pravo-na-vhod .pv-country dl div { padding-block: 7px; border-bottom: 1px solid var(--pv-line); font-size: 13px; line-height: 1.4; }
+#pravo-na-vhod .pv-country dl div:last-child { border-bottom: 0; }
+#pravo-na-vhod .pv-country dt { font-weight: 750; }
+#pravo-na-vhod .pv-country dd { color: var(--pv-muted); }
+#pravo-na-vhod .pv-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 9px; }
+#pravo-na-vhod .pv-field { display: grid; align-content: start; gap: 4px; font-size: 13px; font-weight: 700; }
+#pravo-na-vhod .pv-field textarea {
+  width: 100%;
+  padding: 7px;
+  min-height: 66px;
+  resize: vertical;
+  border-radius: 0;
+  border: 1px solid #877d8c;
+  background: var(--pv-white);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+#pravo-na-vhod .pv-log { list-style: none; padding: 0; }
+#pravo-na-vhod .pv-log li { padding-block: 7px; border-bottom: 1px solid var(--pv-line); font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+#pravo-na-vhod .pv-log li:first-child { padding-top: 0; }
+#pravo-na-vhod .pv-log li:last-child { border-bottom: 0; padding-bottom: 0; }
+#pravo-na-vhod .pv-log p { margin-top: 4px; }
+#pravo-na-vhod .pv-log .pv-mono { color: var(--pv-blue); }
+#pravo-na-vhod .pv-final-log { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-bottom: 12px; }
+#pravo-na-vhod .pv-final-log li, #pravo-na-vhod .pv-final-log li:first-child, #pravo-na-vhod .pv-final-log li:last-child {
+  padding: 9px;
+  border: 1px solid var(--pv-ink);
+  background: var(--pv-white);
+}
+#pravo-na-vhod .pv-banner {
+  margin-bottom: 12px;
+  padding: 10px 13px;
+  border: 1px solid var(--pv-ink);
+  background: var(--pv-lime);
+  font-size: 14px;
+}
+#pravo-na-vhod .pv-banner[data-tone="warning"] { background: #ffe8dc; }
+#pravo-na-vhod .pv-footer { border-top: 1px solid var(--pv-ink); }
+#pravo-na-vhod .pv-footer-inner { min-height: 58px; padding-block: 10px; }
+#pravo-na-vhod .pv-footer p { font-size: 12px; line-height: 1.35; }
+#pravo-na-vhod .pv-dialog {
+  width: min(850px, calc(100% - 26px));
+  max-width: none;
+  max-height: min(87vh, 860px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1.5px solid var(--pv-ink);
+  margin: auto;
+  padding: 0;
+  background: var(--pv-white);
+  color: var(--pv-ink);
+  box-shadow: 7px 7px 0 var(--pv-ink);
+}
+#pravo-na-vhod .pv-dialog::backdrop { background: rgb(27 24 41 / .64); }
+#pravo-na-vhod .pv-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 13px clamp(12px,3vw,25px);
+  border-bottom: 1px solid var(--pv-ink);
+  background: var(--pv-lime);
+}
+#pravo-na-vhod .pv-dialog-head h2 { font-weight: 850; font-size: clamp(23px,3.5vw,33px); line-height: 1.05; letter-spacing: -.045em; }
+#pravo-na-vhod .pv-dialog-body { padding: clamp(12px,3vw,25px); }
+#pravo-na-vhod .pv-dialog-body > p + p, #pravo-na-vhod .pv-dialog-body > ul { margin-top: 8px; }
+#pravo-na-vhod .pv-dialog-body ul { padding-left: 22px; }
+#pravo-na-vhod .pv-dialog-body li + li { margin-top: 4px; }
+#pravo-na-vhod .pv-two-cols { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 11px; }
+#pravo-na-vhod .pv-schedule { display: grid; gap: 5px; list-style: none; padding-left: 0 !important; }
+#pravo-na-vhod .pv-schedule li { display: grid; grid-template-columns: 68px 1fr; gap: 6px; font-size: 13px; line-height: 1.35; }
+#pravo-na-vhod .pv-confirm-dialog { width: min(440px, calc(100% - 26px)); }
+#pravo-na-vhod .pv-confirm-dialog .pv-actions { margin-top: 14px; }
+@media (max-width: 1010px) {
+  #pravo-na-vhod .pv-shell { width: calc(100% - 48px); }
+  #pravo-na-vhod .pv-progress li { grid-template-columns: 1fr; }
+  #pravo-na-vhod .pv-layout { grid-template-columns: minmax(0,1fr) minmax(230px,255px); gap: 15px; }
+}
+@media (max-width: 760px) {
+  #pravo-na-vhod .pv-shell { width: calc(100% - 34px); }
+  #pravo-na-vhod .pv-main { padding-block: 17px 31px; }
+  #pravo-na-vhod .pv-hero-grid { grid-template-columns: 1fr; }
+  #pravo-na-vhod .pv-hero-text { min-height: 0; padding: 24px; }
+  #pravo-na-vhod .pv-hero h1 { font-size: clamp(61px, 13vw, 104px); margin: 17px 0 13px; }
+  #pravo-na-vhod .pv-hero-art { min-height: 178px; height: clamp(178px, 44vw, 235px); border-left: 0; border-top: 1.5px solid var(--pv-ink); }
+  #pravo-na-vhod .pv-art-code--top { top: 8px; left: 8px; }
+  #pravo-na-vhod .pv-art-code--bottom { right: 8px; bottom: 7px; }
+  #pravo-na-vhod .pv-tape span { padding: 8px 6px; gap: 5px; justify-content: center; }
+  #pravo-na-vhod .pv-tape b { font-size: 18px; }
+  #pravo-na-vhod .pv-tape small { font-size: 9px; }
+  #pravo-na-vhod .pv-entry { margin-top: 27px; }
+  #pravo-na-vhod .pv-layout { grid-template-columns: minmax(0,1fr); gap: 16px; }
+  #pravo-na-vhod .pv-sidebar { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  #pravo-na-vhod .pv-stage-head { min-height: 115px; }
+}
+@media (max-width: 530px) {
+  #pravo-na-vhod .pv-top-inner { min-height: 64px; }
+  #pravo-na-vhod .pv-top-inner, #pravo-na-vhod .pv-footer-inner { gap: 8px; }
+  #pravo-na-vhod .pv-brand { gap: 7px; }
+  #pravo-na-vhod .pv-brand-logo { width: 31px; height: 31px; }
+  #pravo-na-vhod .pv-brand-logo svg { width: 20px; height: 20px; }
+  #pravo-na-vhod .pv-brand-name { font-size: 13px; }
+  #pravo-na-vhod .pv-brand .pv-mono { font-size: 8px; margin-top: 2px; }
+  #pravo-na-vhod .pv-tools { gap: 4px; }
+  #pravo-na-vhod .pv-tools .pv-button { font-size: 12px; padding-inline: 6px; }
+  #pravo-na-vhod .pv-hero-text { padding: 16px; }
+  #pravo-na-vhod .pv-hero h1 { font-size: clamp(57px, 14.2vw, 73px); }
+  #pravo-na-vhod .pv-hero-text p { font-size: 15px; }
+  #pravo-na-vhod .pv-teams { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  #pravo-na-vhod .pv-team-card { min-height: 81px; }
+  #pravo-na-vhod .pv-section-head { display: block; }
+  #pravo-na-vhod .pv-section-head p { margin-top: 5px; }
+  #pravo-na-vhod .pv-progress li { display: grid; justify-content: center; padding: 9px 2px; }
+  #pravo-na-vhod .pv-progress .pv-step-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  #pravo-na-vhod .pv-sidebar, #pravo-na-vhod .pv-country-grid, #pravo-na-vhod .pv-two-cols, #pravo-na-vhod .pv-final-log { grid-template-columns: 1fr; }
+  #pravo-na-vhod .pv-fields { grid-template-columns: 1fr; }
+  #pravo-na-vhod .pv-choices { grid-template-columns: 1fr; }
+  #pravo-na-vhod .pv-choice-card { min-height: 0; }
+  #pravo-na-vhod .pv-stage-head::after { width: 116px; height: 116px; top: -39px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #pravo-na-vhod :is(.pv-button,.pv-team-card,.pv-choice-card) { transition: background-color .14s ease, box-shadow .14s ease, border-color .14s ease; }
+}
+</style>
+
+<section id="pravo-na-vhod" lang="ru" aria-label="Игра «Право на вход»">
+  <header class="pv-top">
+    <div class="pv-shell pv-top-inner">
+      <div class="pv-brand">
+        <span class="pv-brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M6 26V6h20v20h-6M6 26h6M16 29V13m-6 6 6-6 6 6" stroke="currentColor" stroke-width="2"/>
+          </svg>
+        </span>
+        <div>
+          <span class="pv-brand-name" data-pv="brand">Право на&nbsp;вход</span>
+          <span class="pv-mono">Стратегический менеджмент</span>
+        </div>
+      </div>
+      <nav class="pv-tools" aria-label="Управление игрой">
+        <button class="pv-button pv-button--quiet" type="button" data-action="materials">Правила и&nbsp;материалы</button>
+        <button class="pv-button pv-button--quiet" type="button" data-action="home" data-pv="home-button" hidden>Команды</button>
+      </nav>
+    </div>
+  </header>
+
+  <div class="pv-shell pv-main">
+    <div class="pv-banner" data-pv="notice" role="status" hidden></div>
+    <div data-pv="screen"></div>
+    <noscript><p class="pv-banner">Включите JavaScript в&nbsp;браузере, чтобы запустить игру.</p></noscript>
+  </div>
+
+  <footer class="pv-footer">
+    <div class="pv-shell pv-footer-inner">
+      <p class="pv-mono">Семинар 05&nbsp;· Стратегическая игра</p>
+      <p class="pv-subtle">Страны, компании и&nbsp;события вымышлены</p>
+    </div>
+  </footer>
+
+  <input type="file" data-pv="file" accept=".json,application/json" hidden>
+  <dialog class="pv-dialog" data-pv="materials" aria-labelledby="pv-materials-title">
+    <div class="pv-dialog-head">
+      <h2 id="pv-materials-title">Правила и&nbsp;материалы</h2>
+      <button class="pv-button" type="button" data-action="close-materials" autofocus>Закрыть</button>
+    </div>
+    <div class="pv-dialog-body" data-pv="materials-body"></div>
+  </dialog>
+  <dialog class="pv-dialog pv-confirm-dialog" data-pv="confirm" aria-labelledby="pv-confirm-title">
+    <div class="pv-dialog-head"><h2 id="pv-confirm-title" data-pv="confirm-title">Подтвердите действие</h2></div>
+    <div class="pv-dialog-body">
+      <p data-pv="confirm-text"></p>
+      <form method="dialog" class="pv-actions">
+        <button class="pv-button" value="cancel" autofocus>Отмена</button>
+        <button class="pv-button pv-button--primary" value="confirm" data-pv="confirm-yes">Подтвердить</button>
+      </form>
+    </div>
+  </dialog>
+</section>
+
+<script>
+(() => {
+  "use strict";
+
+  // 02. НАСТРОЙКИ. Меняйте бюджет, команды, цены и версию здесь.
+  // При изменении механики измените VERSION, чтобы старые сессии не пересчитались.
+  // STORAGE_PREFIX — первая часть ключа. Для независимой копии игры задайте своё имя.
+  const CONFIG = {
+    VERSION: "v1",
+    STORAGE_PREFIX: "pravo-na-vhod",
+    START_BUDGET: 10,
+    TEAMS: [1, 2, 3, 4],
+    MAX_NOTE_LENGTH: 1800,
+    MAX_IMPORT_BYTES: 1024 * 1024
+  };
+
+  const PRICE = {
+    offer: { standard: 0, local: 1, modular: 2 },
+    entry: { export: 1, alliance: 2, acquisition: 4 },
+    compliance: { export: 2, alliance: 1, acquisition: 1 },
+    marketDossierDiscount: 1,
+    governance: { central: 0, autonomy: 1, ip: 1, joint: 2 },
+    supply: { acquiredCarrier: 1, preparedRoute: 2, ordinaryRoute: 3, critical: 1 },
+    scale: 1
+  };
+
+  // 03. СЦЕНАРИЙ. Данные, которые видят участники. Сохраняйте id при правке текста.
+  const CASE = {
+    title: "Право на вход",
+    coverLines: ["Право", "на вход"],
+    coverText: "За два игровых года выведите «Контур» на новый рынок. Займите место в совете директоров.",
+    company: "«Контур» продаёт датчики для холодильных цепей и подписку на платформу, которая предупреждает о нарушениях температуры. Клиенты — продуктовые сети и логистические операторы. Компания сильна в аналитике и удалённом обслуживании.",
+    startingPoint: "Штаб-квартира утверждает продуктовые решения, цены и исключения из стандартов. Инженеры редко выезжают к клиентам. Данные хранятся на домашней платформе. В домашней стране используют язык H, электронные договоры и удалённый сервис.",
+    brief: "За два игровых года нужно создать устойчивый канал продаж в одной стране и сохранить контроль над качеством сервиса. Продукт рассчитан на средний бюджет покупателей. Зарубежных складов нет. Все три направления обслуживает один региональный перевозчик."
+  };
+
+  const COUNTRY_FACTS = [
+    "Язык и практика", "Правила покупателей", "Логистика и факторы", "Спрос",
+    "Конкуренты и заменители", "Покупатели и поставщики", "Барьер входа",
+    "Местная компания", "Наблюдаемая культура"
+  ];
+
+  const COUNTRIES = {
+    lindor: {
+      name: "Линдор", code: "A", object: "LindLink",
+      pitch: "Знакомые правила, большой объём и чувствительность к цене.",
+      demand: "Покупатели ценят стандартный пакет и следят за ценой.",
+      culture: "В Линдоре важны прослеживаемость установок и контроль отклонений.",
+      dossier: {
+        market: "Дистрибьютор может заранее забронировать узел локального хранения.",
+        team: "Правила и процедуры фактически контролирует руководитель качества."
+      },
+      facts: [
+        "Язык H и типовые цифровые договоры.",
+        "Привычные договоры, нужна прослеживаемость установок.",
+        "Прямой маршрут, альтернативные склады, много установщиков.",
+        "Большой объём, средний бюджет, высокая чувствительность к цене.",
+        "Три крупных поставщика. У малых сетей — ручные проверки.",
+        "Четыре крупные сети жёстко торгуются. Установщиков много.",
+        "Нужно подтвердить качество установок.",
+        "LindLink — канал продаж и стандартные процессы.",
+        "Отклонения утверждает руководитель качества. Оценивают долю установок без ошибок."
+      ]
+    },
+    marena: {
+      name: "Марена", code: "B", object: "MareService",
+      pitch: "Растущий спрос, местные рекомендации и выездной сервис.",
+      demand: "Покупатели готовы платить за местную поддержку и выезды инженеров.",
+      culture: "В Марене важна оперативная свобода выездных инженеров.",
+      dossier: {
+        market: "Якорный клиент согласовал с партнёром площадку локального хранения.",
+        team: "Клиентские связи держатся на основном составе выездных инженеров."
+      },
+      facts: [
+        "Местный язык, личные рекомендации и выезды инженеров.",
+        "Крупные покупатели требуют местных гарантий.",
+        "Длинный маршрут и сеть независимых региональных инженеров.",
+        "Растущий рынок, средний бюджет. Покупатели платят за местную поддержку.",
+        "Местные инсталляторы и дешёвые автономные датчики.",
+        "Два якорных покупателя открывают канал продаж. Инженеры раздроблены.",
+        "Нужны сеть выездного сервиса и рекомендации.",
+        "MareService — выездные инженеры и клиентские связи.",
+        "Инженеры сами распределяют заявки на планёрке. Споры с клиентами решает основатель."
+      ]
+    },
+    severa: {
+      name: "Севера", code: "C", object: "Severa Labs",
+      pitch: "Покупатели с высоким бюджетом, строгий аудит и сложные интеграции.",
+      demand: "Покупатели требуют технической интеграции и высокой надёжности.",
+      culture: "В Севере важны права на код и влияние совета разработчиков.",
+      dossier: {
+        market: "Лаборатория предлагает общую площадку локального хранения.",
+        team: "Совет разработчиков готов делегировать операции, если оговорены права доступа к коду."
+      },
+      facts: [
+        "Язык H на переговорах, местный язык в технической документации.",
+        "Операторы требуют аудита и подтверждения прав на компоненты ПО.",
+        "Два логистических узла, кластер разработчиков и сертифицированных лабораторий.",
+        "Спрос меньше, бюджет выше. Нужны интеграции и надёжность.",
+        "Два премиальных игрока. У крупных клиентов возможна собственная разработка.",
+        "Лаборатории ограничивают число испытаний. Два крупных покупателя требуют интеграции.",
+        "Нужны сложные испытания и техническая интеграция.",
+        "Severa Labs — разработчики и экспертиза в интеграциях.",
+        "Архитектуру утверждает совет разработчиков. Руководитель отвечает за сроки перед клиентами."
+      ]
+    }
+  };
+
+  const ROUNDS = [
+    {
+      id: "R1", short: "Рынок", title: "Куда выходим?", seminar: 1, minutes: 20, default: "lindor",
+      model: "CAGE · Ромб Портера",
+      intro: "Совет директоров разрешил выбрать одну из трёх стран. Рынок закрепляется за командой на всю игру и влияет на спрос, досье, управление и логистику.",
+      task: "Сравните три страны по CAGE. Назовите два решающих различия и один фактор ромба Портера, который перевесил при сравнении двух лучших стран."
+    },
+    {
+      id: "R2", short: "Клиент", title: "Чем выигрываем клиента?", seminar: 1, minutes: 15, default: "standard",
+      model: "Пять сил Портера · Позиционирование",
+      intro: "Определите, что получает клиент и за что он будет готов выбрать «Контур». Соответствие спросу станет известно после фиксации.",
+      task: "Оцените пять сил. Выделите решающую силу и объясните, как предложение конкурирует по издержкам, через дифференциацию или фокус на сегменте."
+    },
+    {
+      id: "R3", short: "Способ входа", title: "Как выходим?", seminar: 1, minutes: 20, default: "export",
+      model: "VRIO · Способы входа",
+      intro: "Сравните прямой экспорт, договорный альянс и покупку местной компании. Одно бесплатное досье можно открыть до фиксации, а затем пересмотреть выбор.",
+      task: "Назовите сильную компетенцию «Контура» и локальную способность, которой не хватает. Сравните скорость, контроль, риск и обратимость трёх вариантов. Для покупки объясните мотив и вклад штаб-квартиры.",
+      timing: "6 мин — сравнение, 4 мин — досье, 8 мин — обсуждение, 2 мин — фиксация."
+    },
+    {
+      id: "R4", short: "Допуск", title: "Новый протокол допуска", seminar: 1, minutes: 10, default: "test",
+      model: "PESTEL · Контроль рисков",
+      event: "Карта события № 1",
+      intro: "После международного спора о трансграничной передаче данных крупные покупатели всех трёх стран вводят новый протокол. Через 30 дней полный коммерческий запуск доступен поставщикам, которые хранят данные в стране клиента и дают право на аудит. Изолированный тестовый пилот допускается по упрощённым правилам.",
+      task: "Свяжите геополитическое событие с риском для бизнеса. Назначьте ответственного, определите контроль совета и назовите сигнал для пересмотра."
+    },
+    {
+      id: "R5", short: "Управление", title: "Кто управляет на месте?", seminar: 2, minutes: 15, default: "central",
+      model: "Cultural Web · Распределение полномочий",
+      intro: "Согласуйте права штаб-квартиры и местной команды. Решение повлияет на доверие и доступ к возможностям партнёра.",
+      task: "Назовите два факта о культуре и сформулируйте гипотезу. Определите, кто решает оперативные вопросы, кто контролирует риск и что утверждает совет."
+    },
+    {
+      id: "R6", short: "Поставки", title: "Перевозчик остановил поставки", seminar: 2, minutes: 20, default: "stop",
+      model: "Антикризисный штаб · Стейкхолдеры",
+      event: "Карта события № 2",
+      intro: "Из-за международного спора региональный перевозчик приостановил поставки датчиков на 30 дней по всем трём направлениям. Запаса хватает на критические заказы. Крупные покупатели требуют план действий сегодня.",
+      task: "Решите, что защитить за 48 часов, кого уведомить первым и какой сигнал изменит план. Подготовьте короткое сообщение клиентам.",
+      timing: "2 мин — карта, 5 мин — оценка, 7 мин — штаб, 4 мин — решение и сообщение, 2 мин — фиксация."
+    },
+    {
+      id: "R7", short: "Совет", title: "Что рекомендовать совету?", seminar: 2, minutes: 15, default: "pause",
+      model: "Решение совета · Защита стратегии",
+      intro: "Выберите следующий шаг. Совет учитывает фактический допуск, состояние поставок и оставшийся бюджет.",
+      task: "Запишите решение, два свидетельства из игры, показатель успеха и условие пересмотра. Для пилота добавьте гипотезу, срок и критерий остановки. Для паузы — условие повторного входа."
+    }
+  ];
+
+  const OPTIONS = {
+    R2: [
+      { id: "standard", title: "Стандарт", description: "Единый продукт и удалённый сервис." },
+      { id: "local", title: "Локальная адаптация", description: "Местный язык и сервис на месте." },
+      { id: "modular", title: "Модульная модель", description: "Единое ядро, локальный сервис и отраслевые интеграции." }
+    ],
+    R3: [
+      { id: "export", title: "Прямой экспорт", description: "Прямые продажи и подрядчик. Низкие вложения, высокая обратимость." },
+      { id: "alliance", title: "Договорный альянс", description: "Доступ к сети и инфраструктуре партнёра. Нужно согласовать права сторон." },
+      { id: "acquisition", title: "Приобретение 100%", description: "Прямой контроль и местная инфраструктура. Результат зависит от интеграции." }
+    ],
+    R4: [
+      { id: "full", title: "Выполнить требования", description: "Локальное хранение и право на аудит. Полный допуск." },
+      { id: "test", title: "Перейти на тестовый пилот", description: "Изолированный тест по упрощённым правилам. Ограниченный допуск." },
+      { id: "freeze", title: "Заморозить запуск", description: "Приостановленный допуск. Можно готовить следующий цикл." }
+    ],
+    R5: [
+      { id: "central", title: "Централизация" },
+      { id: "autonomy", title: "Автономия" },
+      { id: "joint", title: "Совместный режим" },
+      { id: "ip", title: "Автономия с защитой IP" }
+    ],
+    R6: [
+      { id: "reserve", title: "Подключить резервный маршрут", description: "Объём поставок сохраняется. Цена зависит от маршрута и прежних решений." },
+      { id: "critical", title: "Обслуживать критических клиентов", description: "Текущий запас выделяется на критические заказы." },
+      { id: "stop", title: "Приостановить поставки", description: "Команда переносит отгрузки и готовит пересмотр плана." }
+    ],
+    R7: [
+      { id: "scale", title: "Масштабировать", description: "Перейти к полному коммерческому запуску." },
+      { id: "pilot", title: "Продолжить пилотом", description: "Ограничить масштаб и проверить ключевую гипотезу." },
+      { id: "pause", title: "Поставить проект на паузу", description: "Сформулировать условие возвращения на рынок." }
+    ]
+  };
+
+  const FIT = {
+    lindor: { standard: 2, local: 1, modular: 2 },
+    marena: { standard: 0, local: 2, modular: 2 },
+    severa: { standard: 0, local: 1, modular: 2 }
+  };
+  const FIT_LABEL = ["Низкое", "Частичное", "Сильное"];
+
+  const GOVERNANCE = {
+    central: {
+      export: "Штаб утверждает исключения для подрядчика.",
+      alliance: "Штаб утверждает исключения из договора.",
+      acquisition: "Поглощение и унификация процессов."
+    },
+    autonomy: {
+      export: "Подрядчик управляет операциями по соглашению об уровне сервиса.",
+      alliance: "Партнёр управляет операциями в рамках договора.",
+      acquisition: "Компания сохраняет местное управление."
+    },
+    joint: {
+      export: "Действует единый стандарт, исключения решает совместная группа.",
+      alliance: "Работает совместный комитет, права сторон зафиксированы письменно.",
+      acquisition: "Симбиоз: местная команда сохраняет автономию, нужные функции объединяются."
+    },
+    ip: {
+      export: "Подрядчик управляет операциями по соглашению об уровне сервиса. Права доступа к коду оговорены.",
+      alliance: "Партнёр управляет операциями в рамках договора. Права доступа к коду оговорены.",
+      acquisition: "Компания сохраняет местное управление и оговаривает права доступа к коду."
+    }
+  };
+
+  const DOSSIERS = {
+    market: { title: "Рынок и инфраструктура" },
+    team: { title: "Команда и культура" }
+  };
+
+  const FINALES = {
+    F1: { title: "Синергия состоялась", text: "Покупка дала местные возможности. Команда сохранила доверие, подтвердила соответствие спросу и оставила резерв на масштабирование." },
+    F2: { title: "Устойчивый выход", text: "Предложение соответствует спросу, доверие сохранено, после решения остался резерв." },
+    F3: { title: "Хрупкое масштабирование", text: "Допуск и поставки позволяют расти. Проверьте слабое место в спросе, доверии или бюджете перед следующим вложением." },
+    F4: { title: "Пилот с возможностью роста", text: "Есть соответствие спросу, доверие местной команды и резерв для проверки гипотезы." },
+    F5: { title: "Пилот без опоры", text: "Запуск ограниченного пилота возможен. Его результат зависит от того, удастся ли восполнить пробел в спросе, доверии или ресурсах." },
+    F6: { title: "Управляемая пауза", text: "Проект остановлен с резервом. Совет может назначить условия и срок повторного рассмотрения." },
+    F7: { title: "Вынужденная остановка", text: "Проект остановлен. Запаса жетонов для следующего цикла недостаточно." }
+  };
+
+  const LABELS = {
+    access: { full: "Полный", test: "Ограниченный", freeze: "Приостановлен" },
+    supply: { reserve: "Полные", critical: "Ограниченные", stop: "Остановлены" },
+    trust: { true: "Сохранено", false: "Снижено" }
+  };
+
+  // Рабочие поля необязательны. Формат элемента: [ключ, заголовок, подсказка].
+  const WORKSHEET = {
+    R1: [
+      ["lindor", "Линдор · CAGE", "C — язык, A — правила, G — логистика, E — спрос и бюджет."],
+      ["marena", "Марена · CAGE", "C — язык, A — правила, G — логистика, E — спрос и бюджет."],
+      ["severa", "Севера · CAGE", "C — язык, A — правила, G — логистика, E — спрос и бюджет."],
+      ["differences", "Два решающих различия", "Какие различия оказали наибольшее влияние?"],
+      ["diamond", "Фактор ромба Портера", "Какой фактор перевесил и почему?"],
+      ["alternative", "Отклонённая страна", "Какая альтернатива была ближе всего и почему вы её отклонили?"]
+    ],
+    R2: [
+      ["rivalry", "Соперничество", "Сила давления, факт и его влияние."],
+      ["entrants", "Угроза новых игроков", "Сила давления, факт и его влияние."],
+      ["substitutes", "Угроза заменителей", "Сила давления, факт и его влияние."],
+      ["buyers", "Сила покупателей", "Сила давления, факт и его влияние."],
+      ["suppliers", "Сила поставщиков", "Сила давления, факт и его влияние."],
+      ["position", "Решающая сила и ценность", "За что нас выберет клиент и как мы будем конкурировать?"]
+    ],
+    R3: [
+      ["vrio", "Ресурс «Контура» · VRIO", "Ценный, редкий, трудно имитируемый? Готова ли компания его использовать?"],
+      ["export", "Прямой экспорт", "Скорость, контроль, риск, обратимость."],
+      ["alliance", "Договорный альянс", "Скорость, контроль, риск, обратимость."],
+      ["acquisition", "Приобретение", "Скорость, контроль, риск, обратимость."],
+      ["local", "Локальная способность", "Что нам нужно получить на месте?"],
+      ["dossier", "Что изменило досье", "Как новый факт изменил или укрепил решение?"],
+      ["parent", "Вклад штаб-квартиры", "Зачем приобретение и что штаб добавит купленной компании?"]
+    ],
+    R4: [
+      ["pestel", "Канал воздействия · PESTEL", "Событие → требование покупателей → риск для бизнеса."],
+      ["owner", "Ответственный и контроль", "Кто действует и что отслеживает совет?"],
+      ["stakeholder", "Кого уведомить", "Кому и что сообщить о выбранном действии?"],
+      ["trigger", "Условие пересмотра", "Какой сигнал изменит ваш план?"]
+    ],
+    R5: [
+      ["fact1", "Культурный факт 1", "Укажите наблюдение и элемент Cultural Web."],
+      ["fact2", "Культурный факт 2", "Укажите наблюдение и элемент Cultural Web."],
+      ["hypothesis", "Гипотеза о культуре", "Как команда реагирует на изменение полномочий?"],
+      ["operations", "Решения на месте", "Кто и что может решать самостоятельно?"],
+      ["control", "Контроль риска", "Кто контролирует, как и с какой частотой?"],
+      ["board", "Полномочия совета", "Какие решения нужно согласовать с советом?"]
+    ],
+    R6: [
+      ["priority", "Приоритет на 48 часов", "Какие клиенты, заказы и ресурсы защищаем?"],
+      ["owner", "Ответственный и первое уведомление", "Кто отвечает и кто узнает первым?"],
+      ["message", "Сообщение клиентам", "Что произошло, что делаем, когда обновим статус?"],
+      ["trigger", "Сигнал для пересмотра", "Какое событие изменит план поставок?"]
+    ],
+    R7: [
+      ["recommendation", "Рекомендация и два свидетельства", "Что предлагаем и какими фактами из игры это обосновано?"],
+      ["kpi", "Показатель успеха", "Что измерим и какое значение считаем достаточным?"],
+      ["trigger", "Пересмотр, пилот или повторный вход", "Для пилота — гипотеза, срок и стоп-критерий. Для паузы — условие возвращения."]
+    ]
+  };
+
+  const ROLES = [
+    "Аналитик стран ведёт CAGE и защищает выбор рынка.",
+    "Аналитик отрасли определяет решающую силу и формулирует ценность для клиента.",
+    "Руководитель развития сравнивает экспорт, альянс и приобретение.",
+    "Руководитель по культуре анализирует досье и проектирует интеграцию.",
+    "Руководитель по рискам организует штаб и распределяет ответственность."
+  ];
+
+  const SCHEDULE = [
+    [
+      ["00–15", "Вводная, роли, пробный выбор"], ["15–35", "R1 · Выбор страны"],
+      ["35–50", "R2 · Предложение"], ["50–70", "R3 · Способ входа и досье"],
+      ["70–80", "R4 · Общая карта № 1"]
+    ],
+    [
+      ["00–05", "Восстановление журнала"], ["05–20", "R5 · Управление"],
+      ["20–40", "R6 · Общая карта № 2"], ["40–55", "R7 · Решение совета"],
+      ["55–65", "Финал и подготовка защиты"], ["65–80", "Четыре защиты по 2 минуты, 7 минут на сравнение"]
+    ]
+  ];
+
+  const RUBRIC = [
+    ["20%", "Страна: CAGE, решающие факторы и ромб Портера."],
+    ["15%", "Отрасль: пять сил, решающая сила и позиционирование."],
+    ["20%", "Способ входа: VRIO, три варианта и вывод из досье."],
+    ["20%", "Культура и управление: факты, гипотеза, полномочия и контроль."],
+    ["25%", "Кризисы и защита: реакция на обе карты, связь с решениями и критерий пересмотра."]
+  ];
+  const DEFENSE_QUESTION = "Какое решение вы бы изменили, если бы знали последствия, и что оставили бы прежним?";
+
+  // 04. ПРАВИЛА. Функции ниже пересчитывают партию из журнала решений.
+  function initialProgress() {
+    return {
+      tokens: CONFIG.START_BUDGET,
+      country: null, offer: null, fit: null, entry: null, dossier: null,
+      access: null, governance: null, trust: null, supply: null, decision: null, finale: null,
+      steps: []
+    };
+  }
+
+  function reserveCost(progress) {
+    if (progress.entry === "acquisition" && progress.trust) return PRICE.supply.acquiredCarrier;
+    if (progress.country === "lindor" || progress.governance === "joint") return PRICE.supply.preparedRoute;
+    return PRICE.supply.ordinaryRoute;
+  }
+
+  function complianceCost(progress) {
+    const discount = progress.dossier === "market" ? PRICE.marketDossierDiscount : 0;
+    return Math.max(0, PRICE.compliance[progress.entry] - discount);
+  }
+
+  function keepsTrust(progress, choice) {
+    if (choice === "joint") return true;
+    if (progress.country === "lindor") return choice === "central";
+    if (progress.country === "marena") return choice === "autonomy";
+    return choice === "ip" && progress.dossier === "team";
+  }
+
+  function getOptions(round, progress) {
+    if (round.id === "R1") {
+      return Object.entries(COUNTRIES).map(([id, country]) => ({
+        id, title: country.name, mark: country.code, description: country.pitch, cost: 0, blocked: ""
+      }));
+    }
+
+    return OPTIONS[round.id]
+      .filter(({ id }) => id !== "ip" || progress.country === "severa")
+      .map((option) => {
+        const { id } = option;
+        let { description } = option;
+        let cost = 0;
+        let blocked = "";
+
+        switch (round.id) {
+          case "R2":
+            cost = PRICE.offer[id];
+            break;
+          case "R3":
+            cost = PRICE.entry[id];
+            if (id !== "export") description += " Местная компания — " + COUNTRIES[progress.country].object + ".";
+            break;
+          case "R4":
+            if (id === "full") cost = complianceCost(progress);
+            break;
+          case "R5":
+            cost = PRICE.governance[id];
+            description = GOVERNANCE[id][progress.entry];
+            if (id === "ip" && progress.dossier !== "team") blocked = "Требуется досье «Команда и культура».";
+            break;
+          case "R6":
+            if (id === "reserve") cost = reserveCost(progress);
+            if (id === "critical") cost = PRICE.supply.critical;
+            break;
+          case "R7":
+            if (id === "scale") {
+              cost = PRICE.scale;
+              const needs = [];
+              if (progress.access !== "full") needs.push("полный допуск");
+              if (progress.supply !== "reserve") needs.push("полные поставки");
+              if (needs.length) blocked = "Нужно выполнить условия: " + needs.join(" и ") + ".";
+            }
+            if (id === "pilot") {
+              if (progress.access === "freeze") blocked = "Допуск приостановлен.";
+              if (progress.supply === "stop") blocked += (blocked ? " " : "") + "Поставки остановлены.";
+            }
+            break;
+        }
+
+        if (cost > progress.tokens) {
+          blocked += (blocked ? " " : "") + "Не хватает жетонов.";
+        }
+        return { ...option, description, cost, blocked };
+      });
+  }
+
+  function finalCode(progress) {
+    if (progress.decision === "scale") {
+      const stable = progress.fit === 2 && progress.trust && progress.tokens >= 1;
+      if (!stable) return "F3";
+      return progress.entry === "acquisition" ? "F1" : "F2";
+    }
+    if (progress.decision === "pilot") {
+      return progress.fit >= 1 && progress.trust && progress.tokens >= 1 ? "F4" : "F5";
+    }
+    return progress.tokens >= 2 ? "F6" : "F7";
+  }
+
+  function dossierImpact(countryId, dossierId) {
+    if (dossierId === "market") {
+      return "Снижает цену полного допуска в R4 на " + PRICE.marketDossierDiscount + " жет. Цена не может быть ниже нуля.";
+    }
+    if (countryId === "severa") return "В R5 становится доступна автономия с защитой интеллектуальной собственности.";
+    return "Помогает обосновать, кому передать полномочия в R5.";
+  }
+
+  function applyChoice(progress, round, option, event) {
+    const { id, cost, title } = option;
+    const country = COUNTRIES[progress.country];
+    let message;
+
+    progress.tokens -= cost;
+    switch (round.id) {
+      case "R1":
+        progress.country = id;
+        message = "Рынок закреплён. Местная компания для альянса или покупки — " + COUNTRIES[id].object + ".";
+        break;
+      case "R2":
+        progress.offer = id;
+        progress.fit = FIT[progress.country][id];
+        message = "Соответствие спросу — " + FIT_LABEL[progress.fit].toLowerCase() + " (" + progress.fit + " из 2). " + country.demand;
+        break;
+      case "R3":
+        progress.entry = id;
+        progress.dossier = event.dossier;
+        message = option.description;
+        if (event.dossier) {
+          message += " Открыто досье «" + DOSSIERS[event.dossier].title + "». " + dossierImpact(progress.country, event.dossier);
+        } else {
+          message += " Досье не открыто.";
+        }
+        break;
+      case "R4":
+        progress.access = id;
+        message = "Допуск — " + LABELS.access[id].toLowerCase() + ". " + option.description.split(". ")[0] + ".";
+        if (id === "full" && progress.dossier === "market") message += " Учтена скидка за досье.";
+        break;
+      case "R5":
+        progress.governance = id;
+        progress.trust = keepsTrust(progress, id);
+        message = "Доверие " + LABELS.trust[progress.trust].toLowerCase() + ". " + country.culture;
+        if (progress.entry === "acquisition" && !progress.trust) message += " Есть риск потерять купленную компетенцию.";
+        if (id === "joint") message += " Стороны согласовали порядок подключения резервного маршрута.";
+        break;
+      case "R6":
+        progress.supply = id;
+        message = "Поставки — " + LABELS.supply[id].toLowerCase() + ".";
+        if (id === "reserve" && progress.access === "freeze") message += " Логистика готова к будущему запуску. Допуск остаётся приостановленным.";
+        break;
+      case "R7":
+        progress.decision = id;
+        progress.finale = finalCode(progress);
+        message = "Решение совета зафиксировано. Итог рассчитан после списания жетонов за этот раунд.";
+        break;
+    }
+    progress.steps.push({
+      round: round.id, title, cost, message, remaining: progress.tokens,
+      byDefault: event.byDefault, at: event.at
+    });
+  }
+
+  function replay(history) {
+    const progress = initialProgress();
+    history.forEach((event, index) => {
+      const round = ROUNDS[index];
+      const option = getOptions(round, progress).find((choice) => choice.id === event.choice);
+      if (!option || option.blocked) throw new Error("Недопустимое действие в " + round.id + ".");
+      applyChoice(progress, round, option, event);
+    });
+    return progress;
+  }
+
+  function endingText(progress) {
+    const base = FINALES[progress.finale].text;
+    if (progress.finale !== "F2") return base;
+    const entryText = progress.entry === "export"
+      ? " Прямые продажи сохраняют обратимость, а выполнение требований компенсирует отсутствие своей инфраструктуры."
+      : " Альянс открыл доступ к местной инфраструктуре, полномочия партнёра согласованы.";
+    return base + entryText;
+  }
+
+  function endingSteps(progress) {
+    const ids = progress.decision === "pause" ? ["R4", "R6", "R7"] : ["R2", "R5", "R6"];
+    return progress.steps.filter((step) => ids.includes(step.round));
+  }
+
+  // 05. СОХРАНЕНИЕ. Один ключ localStorage на версию и команду.
+  // Скачанные файлы попадают в папку загрузок, заданную в браузере.
+  // Снимок состояния в JSON читаем для ведущего. При импорте итог вычисляется заново.
+  const storagePrefix = CONFIG.STORAGE_PREFIX + ":" + CONFIG.VERSION;
+  const activeTabKey = storagePrefix + ":active-team";
+  const memory = new Map();
+  let storageAvailable = true;
+
+  function keyFor(team) {
+    return storagePrefix + ":team:" + team;
+  }
+
+  function getStored(key) {
+    if (storageAvailable) {
+      try {
+        const value = localStorage.getItem(key);
+        if (value === null) memory.delete(key);
+        else memory.set(key, value);
+        return value;
+      } catch {
+        storageAvailable = false;
+      }
+    }
+    return memory.get(key) ?? null;
+  }
+
+  function putStored(key, value) {
+    if (value === null) memory.delete(key);
+    else memory.set(key, value);
+    if (!storageAvailable) return;
+    try {
+      if (value === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, value);
+    } catch {
+      storageAvailable = false;
+    }
+  }
+
+  function activeTab(team) {
+    try {
+      if (team === undefined) return Number(sessionStorage.getItem(activeTabKey));
+      if (team === null) sessionStorage.removeItem(activeTabKey);
+      else sessionStorage.setItem(activeTabKey, String(team));
+    } catch {
+      return null;
+    }
+  }
+
+  function tokenId() {
+    return globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+  }
+
+  function freshRecord(team) {
+    return {
+      game: CONFIG.STORAGE_PREFIX, version: CONFIG.VERSION, team,
+      session: tokenId(), revision: tokenId(), updatedAt: new Date().toISOString(),
+      history: [], review: false, pendingDossier: null, notes: {}
+    };
+  }
+
+  function noteKey(round, field) {
+    return round + "." + field;
+  }
+
+  const allowedNotes = new Set(Object.entries(WORKSHEET).flatMap(([round, fields]) =>
+    fields.map(([key]) => noteKey(round, key))
+  ));
+
+  function unpackRecord(value, expectedTeam) {
+    if (!value || value.game !== CONFIG.STORAGE_PREFIX || value.version !== CONFIG.VERSION) {
+      throw new Error("Этот файл относится к другой игре или версии сценария.");
+    }
+    if (!CONFIG.TEAMS.includes(value.team) || (expectedTeam && value.team !== expectedTeam)) {
+      throw new Error("Номер команды в сохранении не совпадает.");
+    }
+    if (!Array.isArray(value.history) || value.history.length > ROUNDS.length ||
+        typeof value.session !== "string" || !value.session || value.session.length > 100 ||
+        typeof value.revision !== "string" || !value.revision || value.revision.length > 100 ||
+        typeof value.review !== "boolean") {
+      throw new Error("В сохранении повреждён журнал.");
+    }
+
+    const history = value.history.map((event, index) => {
+      const round = ROUNDS[index];
+      if (!event || event.round !== round.id || typeof event.choice !== "string" ||
+          typeof event.byDefault !== "boolean" || typeof event.at !== "string" ||
+          event.at.length > 32 || !Number.isFinite(Date.parse(event.at))) {
+        throw new Error("Некорректная запись для " + round.id + ".");
+      }
+      const dossier = event.dossier ?? null;
+      if (dossier !== null && (round.id !== "R3" || !Object.hasOwn(DOSSIERS, dossier))) {
+        throw new Error("Досье сохранено в неверном раунде.");
+      }
+      if (event.byDefault && (event.choice !== round.default || dossier !== null)) {
+        throw new Error("Неверный вариант по умолчанию в " + round.id + ".");
+      }
+      return { round: round.id, choice: event.choice, byDefault: event.byDefault, dossier, at: event.at };
+    });
+
+    if (value.review && (!history.length || history.length === ROUNDS.length)) {
+      throw new Error("Сохранение указывает на неверный экран раунда.");
+    }
+    const pendingDossier = value.pendingDossier ?? null;
+    if (pendingDossier !== null &&
+        (history.length !== 2 || value.review || !Object.hasOwn(DOSSIERS, pendingDossier))) {
+      throw new Error("В сохранении повреждено открытое досье.");
+    }
+    if (!value.notes || typeof value.notes !== "object" || Array.isArray(value.notes)) {
+      throw new Error("В сохранении повреждён рабочий лист.");
+    }
+    const notes = {};
+    for (const [key, text] of Object.entries(value.notes)) {
+      if (allowedNotes.has(key) && typeof text === "string") notes[key] = text.slice(0, CONFIG.MAX_NOTE_LENGTH);
+    }
+
+    replay(history);
+    return {
+      game: CONFIG.STORAGE_PREFIX, version: CONFIG.VERSION, team: value.team,
+      session: value.session, revision: value.revision,
+      updatedAt: typeof value.updatedAt === "string" ? value.updatedAt.slice(0, 32) : "",
+      history, review: value.review, pendingDossier, notes
+    };
+  }
+
+  function slotFor(team) {
+    const saved = getStored(keyFor(team));
+    if (saved === null) return { saved, record: null, invalid: false };
+    try {
+      return { saved, record: unpackRecord(JSON.parse(saved), team), invalid: false };
+    } catch {
+      return { saved, record: null, invalid: true };
+    }
+  }
+
+  function persist(record) {
+    record.updatedAt = new Date().toISOString();
+    putStored(keyFor(record.team), JSON.stringify(record));
+    return record;
+  }
+
+  // Web Locks координирует две вкладки одного браузера. В любом браузере
+  // перед фиксацией сверяем ревизию сохранения и снова проверяем доступность.
+  function withTeamLock(team, change) {
+    if (!storageAvailable || window.location?.protocol === "file:" || !navigator.locks?.request) {
+      return Promise.resolve().then(change);
+    }
+    let entered = false;
+    return navigator.locks.request(keyFor(team), () => {
+      entered = true;
+      return change();
+    }).catch((error) => {
+      if (entered || error.name !== "SecurityError") throw error;
+      return change();
+    });
+  }
+
+  function newRevision(record, patch) {
+    return { ...record, ...patch, revision: tokenId() };
+  }
+
+  function snapshotOf(progress) {
+    return {
+      tokens: progress.tokens,
+      country: progress.country, offer: progress.offer, fit: progress.fit,
+      entry: progress.entry, dossier: progress.dossier, access: progress.access,
+      governance: progress.governance, trust: progress.trust, supply: progress.supply,
+      decision: progress.decision, finale: progress.finale
+    };
+  }
+
+  function saveDownload(filename, body, mime) {
+    const url = URL.createObjectURL(new Blob([body], { type: mime }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  function numberTag(number) {
+    return String(number).padStart(2, "0");
+  }
+
+  function exportName(record, extension) {
+    const count = record.history.length;
+    const place = count === ROUNDS.length ? "final" : count ? "R" + count : "start";
+    return CONFIG.STORAGE_PREFIX + "-" + CONFIG.VERSION + "-team-" + numberTag(record.team) + "-" + place + "." + extension;
+  }
+
+  function factRows(progress) {
+    const titleFor = (round, id) => OPTIONS[round].find((option) => option.id === id)?.title;
+    return [
+      ["Страна", COUNTRIES[progress.country]?.name],
+      ["Предложение", titleFor("R2", progress.offer)],
+      ["Спрос", progress.fit === null ? null : FIT_LABEL[progress.fit] + " · " + progress.fit + "/2"],
+      ["Способ входа", titleFor("R3", progress.entry)],
+      ["Досье", DOSSIERS[progress.dossier]?.title ?? (progress.entry ? "Не открыто" : null)],
+      ["Допуск", LABELS.access[progress.access]],
+      ["Управление", titleFor("R5", progress.governance)],
+      ["Доверие", LABELS.trust[progress.trust]],
+      ["Поставки", LABELS.supply[progress.supply]]
+    ];
+  }
+
+  function textReport(record, progress) {
+    const parts = [
+      "«" + CASE.title + "» · Команда " + numberTag(record.team),
+      "Сценарий " + record.version + " · Зафиксировано раундов: " + record.history.length + " из " + ROUNDS.length,
+      "Жетоны: " + progress.tokens + " из " + CONFIG.START_BUDGET,
+      ...factRows(progress).filter(([, value]) => value).map(([label, value]) => label + " — " + value)
+    ];
+
+    if (progress.finale) {
+      const finale = FINALES[progress.finale];
+      parts.push("", progress.finale + " · " + finale.title, endingText(progress), "", "Три решения для защиты");
+      endingSteps(progress).forEach((step) => parts.push(step.round + " · " + step.title + " — " + step.message));
+    }
+    parts.push("", "Журнал решений");
+    progress.steps.forEach((step) => {
+      parts.push(step.round + " · " + step.title + (step.byDefault ? " (по умолчанию)" : ""));
+      parts.push("Цена " + step.cost + " · Осталось " + step.remaining, step.message, "");
+    });
+    if (!progress.steps.length) parts.push("Решения ещё не зафиксированы.");
+    if (record.pendingDossier) parts.push("Открыто в текущем раунде: «" + DOSSIERS[record.pendingDossier].title + "».");
+
+    parts.push("", "Рабочий лист");
+    let notesPresent = false;
+    ROUNDS.forEach((round) => {
+      const notes = WORKSHEET[round.id].flatMap(([key, label]) => {
+        const value = record.notes[noteKey(round.id, key)]?.trim();
+        return value ? [label + ": " + value] : [];
+      });
+      if (!notes.length) return;
+      notesPresent = true;
+      parts.push(round.id + " · " + round.title, ...notes, "");
+    });
+    if (!notesPresent) parts.push("Заметок пока нет.");
+    if (progress.finale) parts.push("", "Вопрос для защиты", DEFENSE_QUESTION);
+    return "\uFEFF" + parts.join("\r\n") + "\r\n";
+  }
+
+  // 06. ИНТЕРФЕЙС. Экраны и обработчики действий. Стили — в разделе 01.
+  const root = document.getElementById("pravo-na-vhod");
+  if (!root || root.dataset.pvReady) return;
+  root.dataset.pvReady = "true";
+
+  const ui = Object.fromEntries([...root.querySelectorAll("[data-pv]")].map((element) =>
+    [element.dataset.pv, element]
+  ));
+  const view = {
+    record: null, progress: null, team: CONFIG.TEAMS[0], choice: null, busy: false,
+    notice: "", tone: "info"
+  };
+  let noteWrites = Promise.resolve();
+  ui.brand.textContent = CASE.title;
+  root.setAttribute("aria-label", "Игра «" + CASE.title + "»");
+
+  function escapeText(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (symbol) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[symbol]
+    );
+  }
+
+  // Типографика применяется к готовым текстам игры. Ввод команды сохраняется как введён.
+  function t(value) {
+    const typeset = String(value ?? "")
+      .replace(/(?<![\p{L}\p{N}])([а-яё]{1,2}) (?=[а-яё0-9«])/giu, "$1\u00a0")
+      .replace(/№ (?=\d)/g, "№\u00a0")
+      .replace(/(\d) (?=(?:мин|дней|дня|часов|жет\.|из \d)(?![\p{L}\p{N}]))/gu, "$1\u00a0")
+      .replace(/ (?=—)/g, "\u00a0");
+    return escapeText(typeset);
+  }
+
+  function action(label, id, style = "", value = "") {
+    const modifier = style ? " pv-button--" + style : "";
+    return `<button class="pv-button${modifier}" type="button" data-action="${id}" data-value="${escapeText(value)}">${t(label)}</button>`;
+  }
+
+  function downloadActions() {
+    return action("Скачать JSON", "export-json") + action("Скачать сводку TXT", "export-txt");
+  }
+
+  function renderNotice() {
+    const warning = storageAvailable ? "" : "Браузер не записывает данные в localStorage. Скачайте JSON перед закрытием страницы.";
+    const message = [view.notice, warning].filter(Boolean).join(" ");
+    ui.notice.hidden = !message;
+    ui.notice.dataset.tone = warning ? "warning" : view.tone;
+    ui.notice.textContent = message;
+  }
+
+  function announce(message = "", tone = "info") {
+    view.notice = message;
+    view.tone = tone;
+    renderNotice();
+  }
+
+  function setBusy(busy) {
+    view.busy = busy;
+  }
+
+  function hero() {
+    return `<section class="pv-hero" aria-labelledby="pv-title">
+      <div class="pv-hero-grid">
+        <div class="pv-hero-text">
+          <span class="pv-kicker pv-mono">Семинар 05&nbsp;/ Деловая игра</span>
+          <h1 id="pv-title" tabindex="-1">${CASE.coverLines.map((line) => "<span>" + t(line) + "</span>").join(" ")}</h1>
+          <p>Бюджет — ${CONFIG.START_BUDGET}&nbsp;жет. ${t(CASE.coverText)}</p>
+        </div>
+        <div class="pv-hero-art" aria-hidden="true">
+          <span class="pv-art-code pv-art-code--top pv-mono">Досье 05&nbsp;/ Контур</span>
+          <svg viewBox="0 0 580 350" preserveAspectRatio="xMidYMid slice" fill="none">
+            <defs>
+              <pattern id="pv-graph" width="29" height="29" patternUnits="userSpaceOnUse">
+                <path d="M29 0H0V29" stroke="var(--pv-white)" stroke-opacity=".21" stroke-width="1"/>
+              </pattern>
+              <pattern id="pv-raster" width="6" height="6" patternUnits="userSpaceOnUse">
+                <circle cx="2" cy="2" r="1" fill="var(--pv-ink)" fill-opacity=".6"/>
+              </pattern>
+            </defs>
+            <rect width="580" height="350" fill="url(#pv-graph)"/>
+            <path d="M-30 262 275 24 613 112M-19 292 292 43 611 126" stroke="var(--pv-lilac)" stroke-opacity=".55" stroke-width="1.2"/>
+            <circle cx="302" cy="178" r="129" fill="var(--pv-lilac)" stroke="var(--pv-ink)" stroke-width="2.5"/>
+            <circle cx="302" cy="178" r="111" stroke="var(--pv-ink)" stroke-width="1.4"/>
+            <circle cx="302" cy="178" r="91" fill="url(#pv-raster)" stroke="var(--pv-ink)" stroke-width="1.4"/>
+            <path d="M218 82v191h151V82H218Z" fill="var(--pv-ink)" stroke="var(--pv-ink)" stroke-width="2.5"/>
+            <path d="M234 68h149v191H234z" fill="var(--pv-white)" stroke="var(--pv-ink)" stroke-width="2.5"/>
+            <path d="M251 84h115v175H251z" fill="var(--pv-blue)" stroke="var(--pv-ink)" stroke-width="2.5"/>
+            <path d="m366 259-89 30V102l89-18v175Z" fill="var(--pv-lime)" stroke="var(--pv-ink)" stroke-width="2.5"/>
+            <circle cx="348" cy="177" r="5.5" fill="var(--pv-ink)"/>
+            <path d="M309 228h131m-21-20 21 20-21 20" stroke="var(--pv-ink)" stroke-width="5.5" stroke-linecap="square"/>
+            <path d="M309 223h131m-21-20 21 20-21 20" stroke="var(--pv-orange)" stroke-width="4" stroke-linecap="square"/>
+            <path d="m449 55 9 29 27-13-14 27 29 10-30 10 14 27-26-13-10 28-9-29-27 13 14-27-29-10 29-9-13-27 27 13 9-29Z" fill="var(--pv-orange)" stroke="var(--pv-ink)" stroke-width="2.3"/>
+            <g transform="translate(96 218) rotate(-13)">
+              <rect x="0" y="0" width="109" height="58" fill="var(--pv-lime)" stroke="var(--pv-ink)" stroke-width="2.2"/>
+              <path d="M11 12h87v33H11z" stroke="var(--pv-ink)" stroke-width="1" stroke-dasharray="3 2"/>
+              <text x="54.5" y="33" text-anchor="middle" fill="var(--pv-ink)" font-family="Arial,sans-serif" font-size="12" font-weight="800">ВХОД ↗</text>
+            </g>
+            <path d="M101 123h37m-18-18v37M472 270h28m-14-14v28" stroke="var(--pv-white)" stroke-width="1.4"/>
+            <path d="M498 44v25m6-25v25m6-25v25m8-25v25m3-25v25m8-25v25m6-25v25" stroke="var(--pv-white)" stroke-width="1.2"/>
+          </svg>
+          <span class="pv-art-code pv-art-code--bottom pv-mono">А&nbsp;/ Б&nbsp;/ В&nbsp;↗ Три маршрута</span>
+        </div>
+      </div>
+      <div class="pv-tape pv-mono" aria-label="3 рынка, 7 раундов, 2 кризиса">
+        <span><b>03</b><small>рынка</small></span>
+        <span><b>07</b><small>раундов</small></span>
+        <span><b>02</b><small>кризиса</small></span>
+      </div>
+    </section>`;
+  }
+
+  function slotStatus(slot) {
+    if (slot.invalid) return "Ошибка чтения";
+    if (!slot.record) return "Новая партия";
+    const count = slot.record.history.length;
+    if (count === ROUNDS.length) return "Партия завершена";
+    return count ? "Сохранено " + count + " из " + ROUNDS.length : "Партия начата";
+  }
+
+  function enterLabel(slot) {
+    if (slot.invalid) return "Начать заново";
+    if (!slot.record) return "Начать игру";
+    return slot.record.history.length === ROUNDS.length ? "Открыть итог" : "Продолжить игру";
+  }
+
+  function renderHome() {
+    const slots = new Map(CONFIG.TEAMS.map((team) => [team, slotFor(team)]));
+    const teams = CONFIG.TEAMS.map((team) => `<label class="pv-team">
+      <input type="radio" name="pv-team" value="${team}" ${team === view.team ? "checked" : ""}>
+      <span class="pv-team-card">
+        <span class="pv-mono">Команда</span>
+        <span class="pv-team-number">${numberTag(team)}<span class="pv-radio-mark" aria-hidden="true"></span></span>
+        <span class="pv-team-status">${t(slotStatus(slots.get(team)))}</span>
+      </span>
+    </label>`).join("");
+
+    return hero() + `<section class="pv-entry" aria-labelledby="pv-team-title">
+      <div class="pv-section-head">
+        <h2 id="pv-team-title" tabindex="-1">Выберите команду</h2>
+        <p class="pv-mono pv-subtle">Регистрация совета&nbsp;/ ${numberTag(CONFIG.TEAMS.length)}</p>
+      </div>
+      <div class="pv-entry-panel">
+        <fieldset class="pv-teams">
+          <legend class="pv-visually-hidden">Номер команды</legend>
+          ${teams}
+        </fieldset>
+        <div class="pv-entry-foot">
+          <div class="pv-actions">
+            <button class="pv-button pv-button--primary" type="button" data-action="enter">
+              <span id="pv-enter-label">${t(enterLabel(slots.get(view.team)))}</span>
+              <span class="pv-glyph" aria-hidden="true">↗</span>
+            </button>
+            ${action("Загрузить JSON", "import")}
+          </div>
+          <p>У&nbsp;каждой команды своё сохранение. Для продолжения на&nbsp;другом устройстве загрузите файл JSON.</p>
+        </div>
+      </div>
+    </section>`;
+  }
+
+  function stageHead(round, variant, title = round.title, label = "") {
+    const caption = label || round.id + " / " + (round.event || round.short);
+    return `<header class="pv-stage-head${variant ? " pv-stage-head--" + variant : ""}">
+      <span class="pv-mono">${t(caption)}</span>
+      <h2 id="pv-stage-title" tabindex="-1">${t(title)}</h2>
+    </header>`;
+  }
+
+  function countryCards() {
+    return `<div class="pv-country-grid">${Object.values(COUNTRIES).map((country) => `
+      <article class="pv-country">
+        <header><span class="pv-mono">Рынок ${country.code}</span><h3>${t(country.name)}</h3></header>
+        <dl>${country.facts.map((fact, index) => `<div><dt>${t(COUNTRY_FACTS[index])}</dt><dd>${t(fact)}</dd></div>`).join("")}</dl>
+      </article>`).join("")}</div>`;
+  }
+
+  function disclosure(label, content, open = false) {
+    return `<details class="pv-summary"${open ? " open" : ""}>
+      <summary>${t(label)}</summary><div class="pv-detail-body">${content}</div>
+    </details>`;
+  }
+
+  function workbookFields(round, record) {
+    return `<div class="pv-fields">${WORKSHEET[round.id].map(([id, label, prompt]) => {
+      const key = noteKey(round.id, id);
+      return `<label class="pv-field">
+        <span>${t(label)}</span>
+        <textarea data-note="${escapeText(key)}" rows="2" maxlength="${CONFIG.MAX_NOTE_LENGTH}" placeholder="${t(prompt)}">\n${escapeText(record.notes[key])}</textarea>
+      </label>`;
+    }).join("")}</div>`;
+  }
+
+  function worksheet(round, record) {
+    return disclosure("Рабочий лист команды", `<p>Запишите аргументы команды. Заметки сохраняются вместе с партией и входят в сводку.</p>${workbookFields(round, record)}`);
+  }
+
+  function dossierCard(record, progress) {
+    const country = COUNTRIES[progress.country];
+    const dossier = record.pendingDossier;
+    if (dossier) {
+      return `<div class="pv-dossier" id="pv-open-dossier" tabindex="-1">
+        <span class="pv-mono">Досье открыто</span>
+        <p><strong>${t(DOSSIERS[dossier].title)}</strong></p>
+        <p>${t(country.dossier[dossier])}</p>
+        <p>${t(dossierImpact(progress.country, dossier))}</p>
+      </div>`;
+    }
+    return `<div class="pv-dossier">
+      <span class="pv-mono">Комната данных&nbsp;/ ${t(country.name)}</span>
+      <p>Откройте одно бесплатное досье или сразу зафиксируйте способ входа.</p>
+      <div class="pv-actions">${Object.entries(DOSSIERS).map(([key, item]) => action(item.title, "dossier", "", key)).join("")}</div>
+    </div>`;
+  }
+
+  function optionCard(option) {
+    const disabled = option.blocked ? " disabled" : "";
+    const checked = view.choice === option.id && !option.blocked ? " checked" : "";
+    return `<label class="pv-choice">
+      <input type="radio" name="pv-choice" value="${option.id}"${disabled}${checked}${disabled ? ' aria-describedby="pv-lock-' + option.id + '"' : ""}>
+      <span class="pv-choice-card">
+        <span class="pv-choice-top">
+          <span class="pv-mono pv-subtle">${option.mark ? "Рынок " + option.mark : "Вариант"}</span>
+          <span class="pv-cost pv-mono">${option.cost}&nbsp;жет.</span>
+          <span class="pv-radio-mark" aria-hidden="true"></span>
+        </span>
+        <span class="pv-choice-title">${t(option.title)}</span>
+        <span class="pv-choice-text">${t(option.description)}</span>
+        ${option.blocked ? `<span class="pv-lock" id="pv-lock-${option.id}">${t(option.blocked)}</span>` : ""}
+      </span>
+    </label>`;
+  }
+
+  function extraTask(round, progress) {
+    if (round.id !== "R5") return "";
+    if (progress.entry === "acquisition") return " Объясните модель интеграции по двум осям: автономия и стратегическая взаимозависимость.";
+    if (progress.entry === "alliance") return " Опишите полномочия сторон альянса.";
+    return " Объясните, как штаб будет контролировать подрядчика.";
+  }
+
+  function roundScreen(round, record, progress) {
+    const options = getOptions(round, progress);
+    const selected = options.some((option) => option.id === view.choice && !option.blocked);
+    const defaultTitle = options.find(({ id }) => id === round.default).title;
+    const intro = round.event
+      ? `<div class="pv-event"><p class="pv-mono">Сводка для совета</p><p>${t(round.intro)}</p></div>`
+      : `<div class="pv-intro"><p>${t(round.intro)}</p></div>`;
+    return stageHead(round, round.event ? "event" : "") + `<div class="pv-stage-body">
+      ${intro}
+      <div class="pv-task"><strong>Что обсудить · ${t(round.model)}</strong><p>${t(round.task + extraTask(round, progress))}</p></div>
+      ${round.timing ? disclosure("Как распределить время", `<p>${t(round.timing)}</p>`) : ""}
+      ${round.id === "R1" ? disclosure("Исходные данные «Контура»",
+        `<p>${t(CASE.company)}</p><p>${t(CASE.startingPoint)}</p><p>${t(CASE.brief)}</p>`) +
+        disclosure("Сравнить три страны", countryCards()) : ""}
+      ${round.id === "R3" ? dossierCard(record, progress) : ""}
+      ${worksheet(round, record)}
+      <div class="pv-commit">
+        <fieldset class="pv-choices" style="width:100%">
+          <legend>Решение команды</legend>
+          ${options.map(optionCard).join("")}
+        </fieldset>
+      </div>
+      <div class="pv-commit">
+        <button class="pv-button pv-button--primary" type="button" data-action="commit" id="pv-commit-button" ${selected ? "" : "disabled"}>
+          Зафиксировать решение <span class="pv-glyph" aria-hidden="true">↗</span>
+        </button>
+        <p id="pv-choice-hint">${selected ? t("Жетоны будут списаны при фиксации.") : "Выберите доступный вариант. Решение попадёт в&nbsp;журнал."}</p>
+      </div>
+      ${disclosure("Действие ведущего, если время вышло",
+        `<p>Вариант по&nbsp;умолчанию — ${t(defaultTitle)}${round.id === "R3" ? " без досье" : ""}.</p>
+          <p>${action("Применить вариант по умолчанию", "default")}</p>`)}
+    </div>`;
+  }
+
+  function reviewScreen(round, record, progress) {
+    const step = progress.steps.at(-1);
+    const checkpoint = round.id === "R4";
+    return stageHead(round, "review", "Решение зафиксировано", round.id + " / Последствия") +
+      `<div class="pv-stage-body">
+        <div class="pv-record">
+          <span class="pv-mono">Цена ${step.cost} · Осталось ${step.remaining}${step.byDefault ? " · По умолчанию" : ""}</span>
+          <h3>${t(step.title)}</h3>
+          <p>${t(step.message)}</p>
+        </div>
+        ${checkpoint ? `<div class="pv-record pv-checkpoint">
+          <span class="pv-mono">Контрольная точка&nbsp;/ Семинар 1</span>
+          <h3>Сохраните маршрут</h3>
+          <p>Скачайте JSON, чтобы продолжить с&nbsp;R5 на&nbsp;другом устройстве, и&nbsp;TXT для ведущего.</p>
+          <div class="pv-actions">${downloadActions()}</div>
+        </div>` : ""}
+        ${worksheet(round, record)}
+        <div class="pv-commit">
+          ${action(checkpoint ? "Перейти к семинару 2" : "Следующий раунд", "next", "primary")}
+          <p>Откройте следующий раунд по&nbsp;сигналу ведущего.</p>
+        </div>
+      </div>`;
+  }
+
+  function logList(steps, explain = false) {
+    if (!steps.length) return "<p>Решения ещё не зафиксированы.</p>";
+    return `<ol class="pv-log${explain ? " pv-final-log" : ""}">
+      ${steps.map((step) => `<li>
+        <span class="pv-mono">${step.round}${step.byDefault ? " · По умолчанию" : ""}</span>
+        <p><strong>${t(step.title)}</strong></p>
+        <p>Цена ${step.cost}&nbsp;· Осталось ${step.remaining}</p>
+        <p>${t(step.message)}</p>
+      </li>`).join("")}
+    </ol>`;
+  }
+
+  function finalScreen(record, progress) {
+    const finale = FINALES[progress.finale];
+    const country = COUNTRIES[progress.country].name;
+    const entry = OPTIONS.R3.find(({ id }) => id === progress.entry).title;
+    const recommendation = OPTIONS.R7.find(({ id }) => id === progress.decision).title;
+    return stageHead(ROUNDS.at(-1), "final", finale.title, "Итог маршрута / " + progress.finale) +
+      `<div class="pv-stage-body">
+        <div class="pv-intro"><p><strong>Рекомендация совета — ${t(recommendation.toLowerCase())}.</strong></p><p>${t(endingText(progress))}</p></div>
+        <dl class="pv-result-metrics">
+          <div><dt>Рынок</dt><dd>${t(country)}</dd></div>
+          <div><dt>Способ входа</dt><dd>${t(entry)}</dd></div>
+          <div><dt>Остаток</dt><dd>${progress.tokens} из&nbsp;${CONFIG.START_BUDGET}&nbsp;жет.</dd></div>
+        </dl>
+        <div class="pv-intro"><h3>Три решения, которые объясняют итог</h3></div>
+        ${logList(endingSteps(progress), true)}
+        <div class="pv-task"><strong>Вопрос для защиты · 2&nbsp;мин</strong><p>${t(DEFENSE_QUESTION)}</p></div>
+        ${disclosure("Рабочий лист · все раунды", ROUNDS.map((round) =>
+          disclosure(round.id + " · " + round.short, workbookFields(round, record))
+        ).join(""))}
+        <div class="pv-commit"><div class="pv-actions">${downloadActions()}</div><p>Игровой итог фиксирует последствия. Учебную оценку выставляет ведущий.</p></div>
+      </div>`;
+  }
+
+  function sidebar(record, progress) {
+    const facts = factRows(progress).map(([label, value]) =>
+      `<div><dt>${t(label)}</dt><dd>${value ? t(value) : "—"}</dd></div>`
+    ).join("");
+    return `<aside class="pv-sidebar" aria-label="Состояние игры">
+      <section class="pv-sidebar-card">
+        <h3>Состояние маршрута</h3>
+        <dl class="pv-facts">${facts}</dl>
+        ${disclosure("Журнал · " + record.history.length + " из " + ROUNDS.length, logList(progress.steps))}
+      </section>
+      <section class="pv-sidebar-card">
+        <h3>Сохранение</h3>
+        <div class="pv-actions">${downloadActions()}${action("Загрузить JSON", "import")}</div>
+        <p class="pv-subtle">Журнал и&nbsp;заметки сохраняются в&nbsp;этом браузере. Для переноса партии скачайте JSON.</p>
+        <div class="pv-actions">${action("Сбросить команду", "reset", "text")}</div>
+      </section>
+    </aside>`;
+  }
+
+  function renderGame() {
+    const { record, progress } = view;
+    const complete = Boolean(progress.finale);
+    const count = record.history.length;
+    const activeIndex = record.review ? count - 1 : count;
+    const round = ROUNDS[activeIndex];
+    const status = complete ? "Все решения зафиксированы"
+      : "Раунд " + (activeIndex + 1) + " из " + ROUNDS.length + " · " + round.minutes + " мин";
+    const steps = ROUNDS.map((item, index) => {
+      const current = index === activeIndex;
+      const done = index < count;
+      return `<li${current ? ' aria-current="step"' : ""}${done ? ' class="pv-step-done"' : ""}>
+        <span class="pv-mono">${item.id}${done ? '<span aria-hidden="true"> ✓</span><span class="pv-visually-hidden"> завершён</span>' : ""}</span>
+        <span class="pv-step-name">${t(item.short)}</span>
+      </li>`;
+    }).join("");
+    const stage = complete ? finalScreen(record, progress)
+      : record.review ? reviewScreen(round, record, progress) : roundScreen(round, record, progress);
+    return `<div class="pv-board">
+      <div class="pv-board-head">
+        <div>
+          <span class="pv-mono pv-subtle">${complete ? "Финал" : "Семинар " + numberTag(round.seminar)} / Совет директоров</span>
+          <h1 class="pv-board-title">Команда ${numberTag(record.team)}</h1>
+          <p>${t(status)}</p>
+        </div>
+        <div class="pv-budget" aria-label="Осталось ${progress.tokens} жетонов из ${CONFIG.START_BUDGET}">
+          <strong aria-hidden="true">${progress.tokens}</strong><span class="pv-mono" aria-hidden="true">жетонов<br>из&nbsp;${CONFIG.START_BUDGET}</span>
+        </div>
+      </div>
+      <ol class="pv-progress" aria-label="Раунды">${steps}</ol>
+      <div class="pv-layout">
+        <section class="pv-stage" aria-labelledby="pv-stage-title">${stage}</section>
+        ${sidebar(record, progress)}
+      </div>
+    </div>`;
+  }
+
+  function render(focus) {
+    ui["home-button"].hidden = !view.record;
+    ui.screen.innerHTML = view.record ? renderGame() : renderHome();
+    renderNotice();
+    if (!focus) return;
+    const target = root.querySelector(focus);
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    const area = focus === "#pv-stage-title" ? target.closest(".pv-board") : target;
+    area.scrollIntoView({ block: "start", behavior: "instant" });
+  }
+
+  function openMaterials() {
+    const schedule = SCHEDULE.map((seminar, index) => `<div>
+      <h3>Семинар ${index + 1}</h3><ol class="pv-schedule">${seminar.map(([time, label]) =>
+        `<li><span class="pv-mono">${time}</span><span>${t(label)}</span></li>`
+      ).join("")}</ol>
+    </div>`).join("");
+    ui["materials-body"].innerHTML = `<p><strong>Компания «Контур»</strong></p>
+      <p>${t(CASE.company)}</p><p>${t(CASE.startingPoint)}</p><p>${t(CASE.brief)}</p>
+      ${disclosure("Карточки стран и местных компаний", countryCards())}
+      ${disclosure("Как играть", `<ul>
+        <li>Каждая команда управляет «Контуром» в своей версии событий. Стартовый бюджет — ${CONFIG.START_BUDGET}&nbsp;жетонов.</li>
+        <li>Сначала обсудите задачу, затем выберите вариант и зафиксируйте решение. Жетоны списываются при фиксации. Переходите дальше по сигналу ведущего.</li>
+        <li>Заметки можно вести в рабочем листе. В конце первого семинара скачайте JSON и сводку TXT.</li>
+        <li>После R7 подготовьте двухминутную защиту. Учебная оценка выставляется отдельно от игрового финала.</li>
+      </ul>`, true)}
+      ${disclosure("Пять ролей в команде", `<ul>${ROLES.map((role) => `<li>${t(role)}</li>`).join("")}</ul><p>Перед выбором каждый даёт рекомендацию. При разногласии проголосуйте и запишите оговорку меньшинства.</p>`)}
+      ${disclosure("Расписание двух семинаров", `<div class="pv-two-cols">${schedule}</div>`)}
+      ${disclosure("Памятка ведущим", `<p>Председатель объявляет этапы и держит общий таймер. Оператор проверяет фиксацию и резервные копии. Эксперт собирает рабочие листы и оценивает защиту.</p>
+        <p>Последние две минуты раунда отведите на фиксацию. После дедлайна используйте вариант по умолчанию в карточке раунда. Кризисы объявляйте всем командам одновременно.</p>
+        <ul>${RUBRIC.map(([weight, item]) => `<li><strong>${weight}</strong> · ${t(item)}</li>`).join("")}</ul>
+        <p>Шкала по блоку — 0% за отсутствие ответа, 50% за частичное применение, 75% за факты и вывод, 100% за сравнение с альтернативой и связь с действием. Итог округлите до целого.</p>`)}
+      ${disclosure("Где лежат сохранения", `<p>В панели разработчика браузера откройте «Приложение» → Local Storage → адрес страницы. Ключи этой версии:</p>
+        <ul>${CONFIG.TEAMS.map((team) => `<li><code>${escapeText(keyFor(team))}</code></li>`).join("")}</ul>
+        <p>JSON и TXT скачиваются в папку, указанную в браузере. Для восстановления на другом устройстве загрузите JSON той же версии.</p>`)}`;
+    ui.materials.showModal();
+  }
+
+  function confirmAction(title, text, yes) {
+    ui["confirm-title"].textContent = title;
+    ui["confirm-text"].textContent = text;
+    ui["confirm-yes"].textContent = yes;
+    ui.confirm.returnValue = "cancel";
+    return new Promise((resolve) => {
+      ui.confirm.addEventListener("close", () => resolve(ui.confirm.returnValue === "confirm"), { once: true });
+      ui.confirm.showModal();
+    });
+  }
+
+  function showRecord(record, message = "", { focus = "#pv-stage-title", preserveChoice = false } = {}) {
+    view.team = record.team;
+    view.record = record;
+    view.progress = replay(record.history);
+    if (!preserveChoice) view.choice = null;
+    activeTab(record.team);
+    announce(message);
+    render(focus);
+  }
+
+  function showHome(message = "", focus = "#pv-team-title") {
+    view.record = null;
+    view.progress = null;
+    view.choice = null;
+    activeTab(null);
+    announce(message);
+    render(focus);
+  }
+
+  async function enterTeam() {
+    const team = view.team;
+    const before = slotFor(team);
+    if (before.invalid) {
+      const allowed = await confirmAction("Начать заново?", "Старое сохранение не удалось прочитать. Новая партия заменит его.", "Начать заново");
+      if (!allowed) return;
+    }
+    const record = await withTeamLock(team, () => {
+      const latest = slotFor(team);
+      if (latest.record) return latest.record;
+      if (latest.invalid && latest.saved !== before.saved) throw new Error("Сохранение изменилось. Выберите команду ещё раз.");
+      return persist(freshRecord(team));
+    });
+    showRecord(record);
+  }
+
+  async function mutateGame(expected, change, options) {
+    await noteWrites;
+    const { record, conflict } = await withTeamLock(expected.team, () => {
+      const latest = slotFor(expected.team).record;
+      if (!latest || latest.revision !== expected.revision || latest.session !== expected.session) {
+        return { record: latest, conflict: true };
+      }
+      const next = change(latest, replay(latest.history));
+      return { record: persist(next), conflict: false };
+    });
+    if (conflict) {
+      const message = "Сохранение изменилось в другой вкладке. Проверьте актуальный этап перед повторным действием.";
+      if (record) showRecord(record, message);
+      else showHome(message);
+      return;
+    }
+    showRecord(record, "", options);
+  }
+
+  function canChoose(record) {
+    return record && !record.review && record.history.length < ROUNDS.length;
+  }
+
+  async function openDossier(id) {
+    const record = view.record;
+    if (!canChoose(record) || ROUNDS[record.history.length].id !== "R3" ||
+        record.pendingDossier || !Object.hasOwn(DOSSIERS, id)) return;
+    await mutateGame(record, (latest) => newRevision(latest, { pendingDossier: id }),
+      { focus: "#pv-open-dossier", preserveChoice: true });
+  }
+
+  async function commit(byDefault = false) {
+    const expected = view.record;
+    if (!canChoose(expected)) return;
+    const index = expected.history.length;
+    const round = ROUNDS[index];
+    const choice = byDefault ? round.default : view.choice;
+    if (!choice) return;
+
+    if (byDefault) {
+      const text = "Ведущий применяет этот вариант после окончания времени. Решение попадёт в журнал.";
+      if (!(await confirmAction("Время раунда вышло?", text, "Зафиксировать"))) return;
+    }
+
+    await mutateGame(expected, (latest, progress) => {
+      const option = getOptions(round, progress).find((item) => item.id === choice);
+      if (!option || option.blocked) throw new Error(option?.blocked || "Этот вариант недоступен.");
+      const event = {
+        round: round.id, choice, byDefault,
+        dossier: round.id === "R3" && !byDefault ? latest.pendingDossier : null,
+        at: new Date().toISOString()
+      };
+      return newRevision(latest, {
+        history: [...latest.history, event], pendingDossier: null,
+        review: index + 1 < ROUNDS.length
+      });
+    });
+  }
+
+  async function nextRound() {
+    const expected = view.record;
+    if (!expected?.review) return;
+    await mutateGame(expected, (latest) => newRevision(latest, { review: false }));
+  }
+
+  async function resetTeam() {
+    const expected = view.record;
+    if (!expected) return;
+    const title = "Сбросить команду " + numberTag(expected.team) + "?";
+    const allowed = await confirmAction(title, "Локальный журнал и заметки этой команды будут удалены. Скачанные файлы сохранятся.", "Сбросить команду");
+    if (!allowed) return;
+    await noteWrites;
+    await withTeamLock(expected.team, () => {
+      const latest = slotFor(expected.team).record;
+      if (!latest || latest.session !== expected.session || latest.revision !== expected.revision) {
+        throw new Error("Партия уже изменилась. Проверьте состояние команды.");
+      }
+      putStored(keyFor(expected.team), null);
+    });
+    showHome("Команда " + numberTag(expected.team) + " готова к новой партии.");
+  }
+
+  function queueNote(input) {
+    const source = view.record;
+    const key = input.dataset.note;
+    if (!source || !allowedNotes.has(key)) return;
+    const text = input.value.slice(0, CONFIG.MAX_NOTE_LENGTH);
+    source.notes[key] = text;
+    noteWrites = noteWrites.then(() => withTeamLock(source.team, () => {
+      const latest = slotFor(source.team).record;
+      if (!latest || latest.session !== source.session) return;
+      persist({ ...latest, notes: { ...latest.notes, [key]: text } });
+      renderNotice();
+    })).catch(() => announce("Не удалось записать заметку. Проверьте сохранение команды.", "warning"));
+  }
+
+  async function importFile(file) {
+    if (file.size > CONFIG.MAX_IMPORT_BYTES) throw new Error("Файл слишком большой для сохранения игры.");
+    const text = await file.text();
+    let parsed;
+    try {
+      parsed = JSON.parse(text.replace(/^\uFEFF/, ""));
+    } catch {
+      throw new Error("Не удалось прочитать JSON. Выберите файл, скачанный из игры.");
+    }
+    const imported = unpackRecord(parsed);
+    await noteWrites;
+    const before = slotFor(imported.team);
+    if (before.saved !== null) {
+      const title = "Заменить сохранение команды " + numberTag(imported.team) + "?";
+      const message = "Из файла будут загружены решения (" + imported.history.length + " из " + ROUNDS.length + ") и заметки. Сохранения других команд сохранятся.";
+      if (!(await confirmAction(title, message, "Загрузить сохранение"))) return;
+    }
+    const record = await withTeamLock(imported.team, () => {
+      if (slotFor(imported.team).saved !== before.saved) throw new Error("Сохранение изменилось. Выберите файл повторно.");
+      return persist(newRevision(imported, { session: tokenId() }));
+    });
+    showRecord(record, "Партия команды " + numberTag(record.team) + " восстановлена из JSON.");
+  }
+
+  async function download(format) {
+    const current = view.record;
+    if (!current) return;
+    await noteWrites;
+    const saved = slotFor(current.team).record;
+    if (!saved || saved.session !== current.session) {
+      throw new Error("Партия изменилась в другой вкладке. Откройте актуальное сохранение.");
+    }
+    const progress = replay(saved.history);
+    if (format === "json") {
+      const body = JSON.stringify({ ...saved, snapshot: snapshotOf(progress) }, null, 2);
+      saveDownload(exportName(saved, "json"), body, "application/json");
+    } else {
+      saveDownload(exportName(saved, "txt"), textReport(saved, progress), "text/plain;charset=utf-8");
+    }
+  }
+
+  async function run(action) {
+    if (view.busy) return;
+    setBusy(true);
+    try {
+      await action();
+    } catch (error) {
+      announce(error?.message || "Действие не удалось. Попробуйте снова.", "warning");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const controls = {
+    enter: enterTeam,
+    home: async () => { await noteWrites; showHome(); },
+    materials: openMaterials,
+    "close-materials": () => ui.materials.close(),
+    dossier: openDossier,
+    commit: () => commit(),
+    default: () => commit(true),
+    next: nextRound,
+    reset: resetTeam,
+    import: () => ui.file.click(),
+    "export-json": () => download("json"),
+    "export-txt": () => download("txt")
+  };
+
+  root.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-action]");
+    if (!button || button.disabled || !Object.hasOwn(controls, button.dataset.action)) return;
+    void run(() => controls[button.dataset.action](button.dataset.value));
+  });
+
+  root.addEventListener("change", (event) => {
+    const input = event.target;
+    if (input.name === "pv-team") {
+      view.team = Number(input.value);
+      root.querySelector("#pv-enter-label").textContent = enterLabel(slotFor(view.team));
+      return;
+    }
+    if (input.name === "pv-choice") {
+      view.choice = input.value;
+      const button = root.querySelector("#pv-commit-button");
+      if (!button) return;
+      button.disabled = false;
+      root.querySelector("#pv-choice-hint").textContent = "Жетоны будут списаны при фиксации.";
+      return;
+    }
+    if (input === ui.file) {
+      const file = input.files[0];
+      input.value = "";
+      if (file) void run(() => importFile(file));
+    }
+  });
+
+  root.addEventListener("input", (event) => {
+    if (event.target.matches("textarea[data-note]")) queueNote(event.target);
+  });
+
+  window.addEventListener("storage", (event) => {
+    if (!storageAvailable) return;
+    if (event.key !== null && !CONFIG.TEAMS.some((team) => keyFor(team) === event.key)) return;
+    const current = view.record;
+    if (!current) {
+      render();
+      return;
+    }
+    if (event.key !== null && event.key !== keyFor(current.team)) return;
+    const latest = slotFor(current.team).record;
+    if (!latest) {
+      showHome("Сохранение команды очищено в другой вкладке.", null);
+    } else if (latest.revision !== current.revision || latest.session !== current.session) {
+      showRecord(latest, "Открыто актуальное состояние из другой вкладки.", { focus: null });
+    }
+  });
+
+  const lastTeam = activeTab();
+  if (CONFIG.TEAMS.includes(lastTeam)) {
+    const saved = slotFor(lastTeam).record;
+    if (saved) showRecord(saved, "", { focus: null });
+    else { view.team = lastTeam; showHome("", null); }
+  } else {
+    render();
+  }
+})();
+</script>
+<!-- КОНЕЦ БЛОКА T123 -->
+</body>
+</html>
