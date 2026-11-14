@@ -1,0 +1,30 @@
+          <svg viewBox="0 0 580 350" preserveAspectRatio="xMidYMid slice" fill="none">
+            <defs>
+              <pattern id="pv-graph" width="29" height="29" patternUnits="userSpaceOnUse">
+                <path d="M29 0H0V29" stroke="var(--pv-white)" stroke-opacity=".21" stroke-width="1"/>
+              </pattern>
+              <pattern id="pv-raster" width="6" height="6" patternUnits="userSpaceOnUse">
+                <circle cx="2" cy="2" r="1" fill="var(--pv-ink)" fill-opacity=".6"/>
+              </pattern>
+            </defs>
+            <rect width="580" height="350" fill="url(#pv-graph)"/>
+            <path d="M-30 262 275 24 613 112M-19 292 292 43 611 126" stroke="var(--pv-lilac)" stroke-opacity=".55" stroke-width="1.2"/>
+            <circle cx="302" cy="178" r="129" fill="var(--pv-lilac)" stroke="var(--pv-ink)" stroke-width="2.5"/>
+            <circle cx="302" cy="178" r="111" stroke="var(--pv-ink)" stroke-width="1.4"/>
+            <circle cx="302" cy="178" r="91" fill="url(#pv-raster)" stroke="var(--pv-ink)" stroke-width="1.4"/>
+            <path d="M218 82v191h151V82H218Z" fill="var(--pv-ink)" stroke="var(--pv-ink)" stroke-width="2.5"/>
+            <path d="M234 68h149v191H234z" fill="var(--pv-white)" stroke="var(--pv-ink)" stroke-width="2.5"/>
+            <path d="M251 84h115v175H251z" fill="var(--pv-blue)" stroke="var(--pv-ink)" stroke-width="2.5"/>
+            <path d="m366 259-89 30V102l89-18v175Z" fill="var(--pv-lime)" stroke="var(--pv-ink)" stroke-width="2.5"/>
+            <circle cx="348" cy="177" r="5.5" fill="var(--pv-ink)"/>
+            <path d="M309 228h131m-21-20 21 20-21 20" stroke="var(--pv-ink)" stroke-width="5.5" stroke-linecap="square"/>
+            <path d="M309 223h131m-21-20 21 20-21 20" stroke="var(--pv-orange)" stroke-width="4" stroke-linecap="square"/>
+            <path d="m449 55 9 29 27-13-14 27 29 10-30 10 14 27-26-13-10 28-9-29-27 13 14-27-29-10 29-9-13-27 27 13 9-29Z" fill="var(--pv-orange)" stroke="var(--pv-ink)" stroke-width="2.3"/>
+            <g transform="translate(96 218) rotate(-13)">
+              <rect x="0" y="0" width="109" height="58" fill="var(--pv-lime)" stroke="var(--pv-ink)" stroke-width="2.2"/>
+              <path d="M11 12h87v33H11z" stroke="var(--pv-ink)" stroke-width="1" stroke-dasharray="3 2"/>
+              <text x="54.5" y="33" text-anchor="middle" fill="var(--pv-ink)" font-family="Arial,sans-serif" font-size="12" font-weight="800">ENTER ↗</text>
+            </g>
+            <path d="M101 123h37m-18-18v37M472 270h28m-14-14v28" stroke="var(--pv-white)" stroke-width="1.4"/>
+            <path d="M498 44v25m6-25v25m6-25v25m8-25v25m3-25v25m8-25v25m6-25v25" stroke="var(--pv-white)" stroke-width="1.2"/>
+          </svg>

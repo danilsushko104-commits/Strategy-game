@@ -1,0 +1,571 @@
+import { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION } from './scenario.mjs';
+import { TEAMS, SCHEDULE, OUTCOMES, makeRoom, marketForTable, roomStart, phaseAt, replay, optionsFor, pendingFact,
+  settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord } from './rules.mjs';
+import { storageAvailable, getStored, putStored, teamKey, readSlot, storeRecord, activeTeam, newId,
+  newRecord, withSaveLock, knownTable } from './storage.mjs';
+import { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename } from './presentation.mjs';
+import { renderHost, handleHostAction, updateHostField, importTeamFile, hostClock } from './host.mjs';
+
+const root = document.querySelector("#one-market-first");
+const ui = Object.fromEntries([...root.querySelectorAll("[data-ui]")].map(element => [element.dataset.ui, element]));
+const view = {
+  page: "home", entryMode: "live", room: "", team: 1, market: "indonesia", record: null,
+  pageKey: "", practiceReview: null, notice: "", readingFor: "team", busy: false, writes: Promise.resolve()
+};
+const marketList = Object.entries(MARKETS);
+const scheduledRoom = makeRoom(Date.UTC(2026, 0, 1, 15, 30), 0, "000");
+
+function announce(message, tone = "info") {
+  view.notice = message;
+  ui.notice.dataset.tone = tone;
+  renderNotice();
+}
+
+function renderNotice() {
+  const warning = storageAvailable() ? "" : " Browser storage is unavailable. Export the JSON before leaving this page.";
+  ui.notice.textContent = (view.notice + warning).trim();
+  ui.notice.hidden = !ui.notice.textContent;
+}
+
+function sourceLinks(ids) {
+  return "<ul>" + ids.map(id => SOURCES[id]).map(([label, url]) =>
+    '<li><a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + "</a></li>").join("") + "</ul>";
+}
+
+function teamSelector() {
+  return '<label class="pv-field">Assigned table<select class="pv-input" data-entry="team">' +
+    TEAMS.map(team => '<option value="' + team + '"' + (view.team === team ? " selected" : "") + ">Table " + team + "</option>").join("") +
+    "</select></label>";
+}
+
+function homeScreen() {
+  const room = view.room.toUpperCase().trim();
+  const assigned = roomStart(room) === null ? null : MARKETS[marketForTable(room, view.team)];
+  return `<section class="pv-hero" aria-labelledby="omf-title">
+    <div class="pv-hero-grid"><div class="pv-hero-text">
+      <span class="pv-kicker pv-mono">Revolut APAC case</span>
+      <h1 id="omf-title" tabindex="-1"><span>One Market</span><span>First</span></h1>
+      <p>Four consulting teams. One expansion mandate. Make the case for funding your market first.</p>
+      ${button("Join your table", "jump-entry", "primary")}
+    </div><div class="pv-hero-art" aria-hidden="true">
+      <span class="pv-art-code pv-art-code--top pv-mono">APAC · Market entry</span>
+      <!-- COVER -->
+    </div></div>
+    <div class="pv-tape pv-mono"><span><b>04</b><small>Markets</small></span><span><b>${String(CONFIG.budget).padStart(2, "0")}</b><small>Credits per team</small></span><span><b>01</b><small>Funding mandate</small></span></div>
+  </section>
+  <section class="pv-entry" aria-labelledby="omf-entry-title">
+    <div class="pv-section-head"><h2 id="omf-entry-title" tabindex="-1">${view.entryMode === "live" ? "Join the classroom" : "Practice without a room"}</h2></div>
+    <div class="pv-entry-panel">
+      <form data-form="join">
+        <div class="pv-entry-fields">
+          ${view.entryMode === "live" ? `<label class="pv-field">Room code<input class="pv-input" name="room" data-entry="room" value="${esc(view.room)}" autocapitalize="characters" autocomplete="off" maxlength="23" placeholder="OMF-…"></label>
+          ${teamSelector()}` : `<label class="pv-field">Practice market<select class="pv-input" data-entry="market">${marketList.map(([id, market]) =>
+            `<option value="${id}"${view.market === id ? " selected" : ""}>${market.name}</option>`).join("")}</select></label>${teamSelector()}`}
+        </div>
+        <p class="pv-inline-note pv-block-gap" data-assigned>${assigned && view.entryMode === "live" ? "Your assigned market is " + esc(assigned.name) + "." : "Use the table number assigned by the facilitator."}</p>
+        <div class="pv-entry-foot"><div class="pv-actions">
+          <button type="submit" class="pv-button pv-button--primary">${view.entryMode === "live" ? "Open team dashboard" : "Open practice dashboard"}</button>
+          ${button("Restore JSON", "import", "", 'data-purpose="team"')}
+          ${button(view.entryMode === "live" ? "Practice without a room" : "Back to classroom", "entry-mode", "text")}
+        </div></div>
+      </form>
+    </div>
+  </section>`;
+}
+
+function renderMaterials() {
+  ui["materials-body"].innerHTML = `
+    <div class="pv-wording"><h3>Board brief</h3>${BRIEF.map(line => "<p>" + esc(line) + "</p>").join("")}</div>
+    ${disclosure("How to play", '<ol class="pv-guidance">' + [
+      "Sit at the assigned table. Make decisions together in English. Everyone can speak and there are no fixed positions.",
+      "Read the new card. Compare the options and prices against your remaining credits.",
+      "Select an action and write a short evidence note and trade-off. A complete, eligible draft saved before the deadline locks at the deadline if you have not locked it already. Otherwise the free default applies.",
+      "You may edit worksheet notes during the active round, even after locking the choice. New rounds open on the classroom clock. The credits spent stay in the ledger.",
+      "The three experts score the strategy and hearing. Your simulated outcome and remaining credits do not award automatic points."
+    ].map(item => "<li>" + esc(item) + "</li>").join("") + "</ol>", true)}
+    ${disclosure("Round deadlines and defaults", '<ul>' + [
+      "A complete draft has an affordable selected option, an evidence or assumption note and a trade-off note.",
+      "At the deadline the browser locks that draft. The free default applies if the draft is incomplete or unavailable.",
+      "Defaults in order: Profile A, base dossier, mock preparation without an entry route, keep a reserve, keep the offer, hold outreach, defer.",
+      "The market is assigned and the profile is fixed after R1. R5 can narrow the segment, use case or corridor within that profile."
+    ].map(line => '<li>' + esc(line) + '</li>').join("") + "</ul>")}
+    ${disclosure("Singapore comparison base", facts(SINGAPORE) + sourceLinks(["revolut", "transfers", "paynow", "mexico", "argentina", "indicators"]))}
+    ${disclosure("CAGE and Uppsala", "<p>For each CAGE dimension, compare one Singapore fact with one market fact and identify the effect on your plan. Rank two differences. For Uppsala, link a first local relationship and learning activity to a larger commitment only when evidence justifies it.</p>" + sourceLinks(["cage", "uppsala"]))}
+    ${disclosure("Published assessment · 70 written / 30 oral", facts(RUBRIC.map(([,name,weight,checks]) => [name + " · " + weight, checks.join(" · ")])) + "<p>" + esc(QUESTION) + "</p>")}
+    ${disclosure("Seminar programme · Moscow time", '<ul class="pv-schedule">' + SCHEDULE.map(item =>
+      "<li><strong>" + interval(scheduledRoom, item.from, item.to) +
+      "</strong><span>" + esc(item.label) + "</span></li>").join("") + "</ul>")}`;
+  ui.materials.showModal();
+}
+
+function recordPhase(now) {
+  const record = view.record;
+  if (record.mode === "live") return phaseAt(record.room, now);
+  if (view.practiceReview) return {id: view.practiceReview, to: null, bulletinB: record.bulletinB};
+  return {id: ROUNDS[record.history.length]?.id || "PREP", to: null, bulletinB: record.bulletinB};
+}
+
+function progressBar(phase, path) {
+  return '<ol class="pv-progress" aria-label="Round progress">' +
+    ROUNDS.map((round, index) => `<li${phase.id === round.id ? ' aria-current="step"' : ""} class="${index < path.length ? "pv-step-done" : ""}">
+      <strong class="pv-mono">${round.id}</strong><span class="pv-step-name">${esc(round.short)}</span></li>`).join("") + "</ol>";
+}
+
+function marketDossier(market, selected) {
+  const profiles = selected ? [[selected, market.profiles[selected]]] : Object.entries(market.profiles);
+  return `<div class="pv-wording">
+    ${facts(market.facts)}
+    ${profiles.map(([id, profile]) => `<article class="pv-dossier"><p class="pv-mono">Profile ${id}</p>
+      <h3>${esc(profile.name)}</h3><p>${esc(profile.journey)}</p><p><strong>Suggested channel</strong> · ${esc(profile.channel)}</p>
+      <ul>${profile.alternatives.map(([name, detail, link]) => `<li><a href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(name)}</a> · ${esc(detail)}</li>`).join("")}</ul></article>`).join("")}
+    ${sourceLinks(market.sources)}
+  </div>`;
+}
+
+function worksheet(round, record, locked = false) {
+  return '<div class="pv-fields">' + WORKSHEET[round.id].map(([field, label]) =>
+    '<label class="pv-field">' + esc(label) + '<textarea maxlength="' + CONFIG.maxNote + '" ' +
+    (locked ? 'readonly' : 'data-note data-round="' + round.id + '" data-field="' + field + '"') + '>' +
+    esc(record.notes[round.id + "." + field]) + '</textarea></label>').join("") + "</div>";
+}
+
+function optionCard(option, selected, round) {
+  return `<label class="pv-choice">
+    <input type="radio" name="choice" value="${option.id}" data-draft="choice" data-round="${round.id}"
+      ${option.blocked ? "disabled" : ""}${selected === option.id ? " checked" : ""}>
+    <span class="pv-choice-card"><span class="pv-choice-top">
+      <span class="pv-cost pv-mono">${option.cost} ${option.cost === 1 ? "credit" : "credits"}</span><span class="pv-radio-mark" aria-hidden="true"></span>
+    </span><span class="pv-choice-title">${esc(option.label)}</span>
+    <span class="pv-choice-text">${esc(option.description)}</span>
+    ${option.blocked ? '<span class="pv-lock">' + esc(option.blocked) + "</span>" : ""}
+    </span>
+  </label>`;
+}
+
+function displayClock() {
+  return '<div class="pv-clock" data-clock hidden><span data-clock-label></span><strong data-clock-time></strong></div>';
+}
+
+function roundCard(round, state, record, phase) {
+  const market = MARKETS[record.market];
+  const dossier = round.id === "R1" ? disclosure("Singapore and assigned market facts", facts(SINGAPORE) + marketDossier(market, null), false) : "";
+  const candidates = round.id === "R3" ? disclosure("Local candidate files · simulation", facts(Object.values(market.candidates)), false) : "";
+  const incoming = pendingFact(round.id, state, record.market);
+  const update = incoming ? '<div class="pv-event"><p class="pv-mono">New information</p><p>' + esc(incoming) + "</p></div>" : "";
+  const emergency = round.id === "R6" ? `<div class="pv-event"><p class="pv-mono">Bulletin A · alert</p><p>${esc(BULLETINS.A)}</p></div>
+    ${phase.bulletinB ? '<div class="pv-event"><p class="pv-mono">Bulletin B · verified facts</p><p>' + esc(BULLETINS.B) + '</p><p class="pv-block-gap">' + esc(market.profiles[state.profile].incident) + "</p></div>" :
+      '<p class="pv-task">Bulletin B opens eight minutes into R6. The response choices unlock then.</p>'}` : "";
+  return dossier + candidates + update + emergency + '<div class="pv-task"><strong>Team task</strong>' + esc(round.task) + '</div>';
+}
+
+function decisionForm(round, state, record) {
+  const draft = record.drafts[round.id] || {};
+  const options = optionsFor(round.id, state, record.market);
+  const available = options.some(option => option.id === draft.choice && !option.blocked);
+  const output = available ? "You have " + (state.credits - options.find(option => option.id === draft.choice).cost) + " credits after this choice." :
+    "Select an action. Add evidence and a trade-off before you lock it.";
+  return `<form data-form="lock" data-round="${round.id}">
+    <fieldset class="pv-choices"><legend>Choose one action</legend>
+      ${options.map(option => optionCard(option, draft.choice, round)).join("")}
+    </fieldset>
+    <div class="pv-fields">
+      <label class="pv-field">Evidence or assumption<textarea data-draft="evidence" data-round="${round.id}" maxlength="${CONFIG.maxNote}" required>${esc(draft.evidence)}</textarea></label>
+      <label class="pv-field">Benefit and trade-off<textarea data-draft="tradeoff" data-round="${round.id}" maxlength="${CONFIG.maxNote}" required>${esc(draft.tradeoff)}</textarea></label>
+    </div>
+    <div class="pv-commit pv-commit--decision"><p data-choice-hint>${esc(output)}</p>
+      <button type="submit" class="pv-button pv-button--primary"${available && isDraftComplete(draft) ? "" : " disabled"}>Lock this choice</button>
+    </div></form>`;
+}
+
+function roundScreen(round, state, record, phase, lastEvent) {
+  const title = round.title;
+  const time = record.mode === "practice" ? "Practice" : interval(record.room, phase.from, phase.to);
+  const label = round.id + " · " + time;
+  if (lastEvent?.round === round.id) {
+    const next = record.mode === "practice" ?
+      button(round.id === "R7" ? "Prepare the Board Brief" : "Next round", "next-practice", "primary") :
+      '<p>Continue preparing your worksheet. The next stage opens on the classroom clock.</p>' + displayClock();
+    const note = lastEvent.method === "default" ? "Default recorded" : "Decision locked";
+    return stage(title, label, `<div class="pv-record"><p class="pv-mono">${note}</p><h3>${esc(lastEvent.label)}</h3>
+        <p>${esc(lastEvent.result)}</p><p>${lastEvent.cost} spent · ${lastEvent.credits} remaining</p></div>
+      ${round.id === "R4" ? '<div class="pv-panel pv-checkpoint"><strong>Save your checkpoint before the break.</strong><div class="pv-file-actions">' + button("Download checkpoint JSON", "export-json") + "</div></div>" : ""}
+      ${disclosure("Team worksheet", worksheet(round, record), true)}
+      <div class="pv-commit">${next}</div>`, "review");
+  }
+
+  const beforeBulletin = round.id === "R6" && !phase.bulletinB;
+  return stage(title, label, displayClock() + roundCard(round, state, record, phase) +
+    (beforeBulletin ? disclosure("Team worksheet", worksheet(round, record), true) +
+      (record.mode === "practice" ? '<div class="pv-commit">' + button("Reveal bulletin B", "practice-b", "primary") + "</div>" : "") :
+      decisionForm(round, state, record) + disclosure("Team worksheet", worksheet(round, record), true) +
+      (record.mode === "practice" ? '<div class="pv-file-actions">' + button("Try this round’s default", "practice-default", "text") + "</div>" : "")),
+    round.id === "R6" ? "event" : "");
+}
+
+function logList(path, detailed = false, record = null) {
+  if (!path.length) return '<p class="pv-inline-note">Decisions appear after they are locked.</p>';
+  return '<ol class="pv-log">' + path.map(event =>
+    '<li><span class="pv-mono">' + event.round + '</span> <strong>' + esc(event.label) + '</strong><p>' +
+    event.cost + " spent · " + event.credits + " left" + (event.method === "default" ? " · default" : "") + "</p>" +
+    (detailed ? "<p>" + esc(event.result) + "</p>" +
+      (event.evidence ? '<p class="pv-journal-notes"><strong>Evidence</strong> · ' + esc(event.evidence) + "</p>" : "") +
+      (event.tradeoff ? '<p class="pv-journal-notes"><strong>Trade-off</strong> · ' + esc(event.tradeoff) + "</p>" : "") +
+      (record ? disclosure("Worksheet for " + event.round, worksheet(ROUNDS.find(round => round.id === event.round), record, true)) : "") : "") + "</li>").join("") + "</ol>";
+}
+
+function resultScreen(phase, state, path, record) {
+  const last = path.at(-1);
+  const outcome = OUTCOMES[last.choice];
+  const editing = phase.id === "PREP";
+  return stage("Board Brief", record.mode === "practice" ? "Practice outcome" : "Investment hearing", `
+    <div class="pv-record pv-checkpoint"><p class="pv-mono">Your recommendation</p><h3>${esc(outcome[0])}</h3><p>${esc(outcome[1])}</p></div>
+    <div class="pv-task"><strong>At the hearing</strong>Three minutes to pitch and one minute for the common question. Show the first customer, two CAGE findings, the Uppsala pathway, what the budget changed and how you handled the emergency.</div>
+    <p><strong>Common question</strong> · ${esc(QUESTION)}</p>
+    <label class="pv-field pv-block-gap">One-page Board Brief
+      <textarea rows="10" maxlength="${CONFIG.maxNote * 3}"${editing ? ' data-brief' : ' readonly'}
+      placeholder="Market and funding ask · Customer and competing offer · CAGE and entry milestones · Budget trade-off · Emergency and launch condition">${esc(record.brief)}</textarea>
+    </label>
+    <div class="pv-file-actions pv-actions">${button("Download Board Brief", "export-board")}${button("Download team JSON", "export-json")}</div>
+    ${disclosure("Review the full decision journal", logList(path, true, record))}
+    <p class="pv-inline-note pv-block-gap">${CONFIG.budget - state.credits} spent · ${state.credits} left. The expert panel evaluates the strategy and the pitch.</p>`, "final");
+}
+
+function waitingScreen(phase, record) {
+  const pauses = {
+    SETUP: ["The Board is opening the session", "R1 opens with the classroom clock. Read the rules and the Chair’s brief while you wait."],
+    BREAK: ["Seminar break", "R5 opens when the second seminar begins. Save the team JSON before moving to another device."]
+  };
+  const [title, info] = pauses[phase.id] || ["Waiting for the next stage", "Follow the facilitator’s instructions."];
+  return stage(title, MARKETS[record.market].name, '<p>' + esc(info) + "</p>" + displayClock() +
+    '<div class="pv-file-actions">' + button("Download team JSON", "export-json") + "</div>", "review");
+}
+
+function renderTeam(now) {
+  const record = view.record;
+  const market = MARKETS[record.market];
+  const {state, path} = replay(record);
+  const phase = recordPhase(now);
+  const round = ROUNDS.find(item => item.id === phase.id);
+  const body = round ? roundScreen(round, state, record, phase, path.at(-1)) :
+    path.length === ROUNDS.length ? resultScreen(phase, state, path, record) : waitingScreen(phase, record);
+  return `<div class="pv-board-head"><div><p class="pv-mono">Table ${record.team} · ${record.mode === "practice" ? "Practice" : esc(record.room)}</p>
+      <h1 class="pv-board-title">${esc(market.name)}</h1><p class="pv-board-context">${esc(market.city)} · ${market.currency}</p>
+    </div><div class="pv-budget" aria-label="${state.credits} of ${CONFIG.budget} credits left"><strong>${state.credits}</strong><span class="pv-mono">Credits<br>left</span></div></div>
+    ${progressBar(phase, path)}
+    <div class="pv-layout"><div>${body}</div><aside class="pv-sidebar">
+      <section class="pv-sidebar-card"><h3>Decision journal</h3>${logList(path)}
+        <div class="pv-file-actions pv-actions">${button("Journal TXT", "export-txt")}${button("Save JSON", "export-json")}</div>
+      </section>
+      <section class="pv-sidebar-card"><h3>Team materials</h3>
+        ${disclosure("Market dossier", marketDossier(market, state.profile))}
+        ${disclosure("Singapore comparison base", facts(SINGAPORE) + sourceLinks(["paynow", "revolut", "transfers"]))}
+        ${path.length ? disclosure("Earlier evidence and notes", logList(path, true, record)) : ""}
+        ${record.mode === "practice" ? '<div class="pv-file-actions">' + button("Reset practice", "reset", "text") + "</div>" : ""}
+      </section>
+    </aside></div>`;
+}
+
+function updateClock(now = Date.now()) {
+  if (view.page === "host") {
+    hostClock(root, now);
+    return;
+  }
+  const clock = root.querySelector("[data-clock]");
+  if (!clock || view.record?.mode !== "live") return;
+  const phase = recordPhase(now);
+  if (phase.to === null) return;
+  const limit = (phase.id === "R6" && !phase.bulletinB ? 92 : phase.to);
+  const delta = roomStart(view.record.room) + limit * 60_000 - now;
+  clock.hidden = false;
+  clock.dataset.near = delta <= 120_000;
+  clock.querySelector("[data-clock-label]").textContent = phase.id === "R6" && !phase.bulletinB ? "Bulletin B in" : phase.id === "SETUP" || phase.id === "BREAK" ? "Next round in" : "Time left";
+  clock.querySelector("[data-clock-time]").textContent = countdown(delta);
+}
+
+function render(focus = "") {
+  const now = Date.now();
+  const element = document.activeElement;
+  const field = element?.dataset;
+  const selection = [element?.selectionStart, element?.selectionEnd];
+  ui.home.hidden = view.page === "home";
+  ui.screen.innerHTML = view.page === "team" ? renderTeam(now) : view.page === "host" ? renderHost(now) : homeScreen();
+  view.pageKey = view.page === "team" ? teamKeyForView(now) : "";
+  renderNotice();
+  updateClock(now);
+  if (focus) {
+    const target = root.querySelector(focus);
+    target?.focus({preventScroll: true});
+    target?.scrollIntoView({block: "start", behavior: "instant"});
+  } else if (field?.note !== undefined && selection[0] != null) {
+    const target = [...root.querySelectorAll("textarea[data-note]")].find(item => item.dataset.round === field.round && item.dataset.field === field.field);
+    target?.focus({preventScroll: true});
+    target?.setSelectionRange(...selection);
+  }
+}
+
+function teamKeyForView(now) {
+  const phase = recordPhase(now);
+  return phase.id + ":" + Number(phase.bulletinB) + ":" + view.record.history.length;
+}
+
+function ask(title, message, action) {
+  ui["confirm-title"].textContent = title;
+  ui["confirm-text"].textContent = message;
+  ui["confirm-yes"].textContent = action;
+  ui.confirm.returnValue = "cancel";
+  return new Promise(resolve => {
+    ui.confirm.addEventListener("close", () => resolve(ui.confirm.returnValue === "confirm"), {once: true});
+    ui.confirm.showModal();
+  });
+}
+
+function showTeam(record, message = "") {
+  view.page = "team";
+  view.record = record;
+  view.practiceReview = null;
+  view.team = record.team;
+  activeTeam({room: record.room, team: record.team});
+  announce(message);
+  render("#omf-stage-title");
+}
+
+async function join() {
+  const room = view.entryMode === "live" ? view.room.trim().toUpperCase() : "PRACTICE";
+  if (view.entryMode === "live" && roomStart(room) === null) throw new Error("Enter the room code shown by the facilitator.");
+  const market = view.entryMode === "live" ? marketForTable(room, view.team) : view.market;
+  const record = await withSaveLock(teamKey(room, view.team), () => {
+    let record = readSlot(room, view.team);
+    if (record && record.market !== market) throw new Error("This practice table has a saved market. Open it and reset practice, or choose another table.");
+    record = record || newRecord(view.entryMode, room, view.team, market);
+    record = settleDeadlines(record, Date.now());
+    storeRecord(record);
+    return record;
+  });
+  showTeam(record);
+}
+
+function saveChange(change, now = Date.now()) {
+  const expected = view.record;
+  if (!expected) return Promise.resolve();
+  const job = view.writes.then(() => withSaveLock(teamKey(expected.room, expected.team), () => {
+    const current = readSlot(expected.room, expected.team);
+    if (!current || current.session !== expected.session) throw new Error("The saved team session has changed. Reopen it from Home.");
+    const settled = settleDeadlines(current, now);
+    if (settled !== current) storeRecord(settled);
+    const next = change(settled, now);
+    if (next !== settled) storeRecord(next);
+    if (view.record?.session === expected.session) view.record = next;
+    return next;
+  }));
+  view.writes = job.catch(() => {});
+  return job;
+}
+
+function updateChoiceHint() {
+  const form = root.querySelector('form[data-form="lock"]');
+  if (!form || !view.record) return;
+  const id = form.dataset.round;
+  const draft = view.record.drafts[id];
+  const {state} = replay(view.record);
+  const item = optionsFor(id, state, view.record.market).find(item => item.id === draft?.choice && !item.blocked);
+  form.querySelector('button[type="submit"]').disabled = !item || !isDraftComplete(draft);
+  form.querySelector("[data-choice-hint]").textContent = item ? "You have " + (state.credits - item.cost) + " credits after this choice." :
+    "Select an action. Add evidence and a trade-off before you lock it.";
+}
+
+function capture(element) {
+  if (view.page !== "team") return;
+  const {draft, note, round, field, brief} = element.dataset;
+  const value = element.value;
+  let change;
+  if (draft) change = (record, now) => updateDraft(record, round, draft, value, now);
+  else if (note !== undefined) change = (record, now) => updateNote(record, round, field, value, now);
+  else if (brief !== undefined) change = (record, now) => updateBrief(record, value, now);
+  if (change) void saveChange(change).then(updateChoiceHint).catch(error => announce(error.message, "warning"));
+}
+
+async function submitRound(round, useDefault = false) {
+  const record = await saveChange((current, now) => lockRound(current, round, now, useDefault));
+  if (!record) return;
+  if (record.mode === "practice") view.practiceReview = round;
+  announce("");
+  render("#omf-stage-title");
+}
+
+async function restoreTeam(file) {
+  if (file.size > CONFIG.maxImportBytes) throw new Error("The JSON file is too large.");
+  let parsed;
+  try { parsed = JSON.parse(await file.text()); }
+  catch { throw new Error("Choose a JSON file exported by the game."); }
+  const record = validateRecord(parsed);
+  const key = teamKey(record.room, record.team);
+  await view.writes;
+  const before = getStored(key);
+  if (before !== null && !await ask("Replace a saved game?", "Restore table " + record.team + " for " + MARKETS[record.market].name + " from this JSON file?", "Restore")) return;
+  const next = await withSaveLock(key, () => {
+    if (getStored(key) !== before) throw new Error("The save changed. Pick the file again.");
+    const restored = settleDeadlines({...record, session: newId()}, Date.now());
+    storeRecord(restored);
+    return restored;
+  });
+  showTeam(next, "Game restored from JSON.");
+}
+
+async function download(format) {
+  await saveChange(record => record);
+  const record = view.record;
+  if (!record) return;
+  if (format === "json") saveFile(teamFilename(record, "json", "save"), JSON.stringify(record, null, 2), "application/json");
+  else saveFile(teamFilename(record, "txt", format === "board" ? "board-brief" : "journal"), textReport(record, format === "board"), "text/plain;charset=utf-8");
+}
+
+function home() {
+  if (view.record) {
+    view.entryMode = view.record.mode;
+    if (view.record.mode === "live") view.room = view.record.room;
+    else view.market = view.record.market;
+  }
+  view.page = "home";
+  view.record = null;
+  view.practiceReview = null;
+  activeTeam(null);
+  announce("");
+  render("#omf-entry-title");
+}
+
+async function run(action) {
+  if (view.busy) return;
+  view.busy = true;
+  try { await action(); }
+  catch (error) { announce(error.message || "The action could not be completed.", "warning"); }
+  finally { view.busy = false; }
+}
+
+const controls = {
+  home: async () => { await view.writes; home(); },
+  host: async () => { await view.writes; view.page = "host"; view.record = null; activeTeam(null); announce(""); render("#omf-stage-title"); },
+  materials: renderMaterials,
+  "close-materials": () => ui.materials.close(),
+  "jump-entry": () => {
+    const heading = root.querySelector("#omf-entry-title");
+    heading.focus({preventScroll: true});
+    heading.scrollIntoView({block: "start", behavior: "instant"});
+  },
+  "entry-mode": () => { view.entryMode = view.entryMode === "live" ? "practice" : "live"; render("#omf-entry-title"); },
+  import: target => { view.readingFor = target.dataset.purpose; ui.file.click(); },
+  "practice-b": async () => {
+    await saveChange(record => ({...record, bulletinB: true}));
+    render("#omf-stage-title");
+  },
+  "practice-default": () => submitRound(ROUNDS[view.record.history.length].id, true),
+  "next-practice": () => { view.practiceReview = null; render("#omf-stage-title"); },
+  "export-json": () => download("json"),
+  "export-txt": () => download("txt"),
+  "export-board": () => download("board"),
+  reset: async () => {
+    const record = view.record;
+    if (record?.mode !== "practice" || !await ask("Reset the practice table?", "Its locally saved choices and notes will be removed.", "Reset practice")) return;
+    await view.writes;
+    await withSaveLock(teamKey(record.room, record.team), () => {
+      if (readSlot(record.room, record.team)?.session !== record.session) throw new Error("The practice save has changed.");
+      putStored(teamKey(record.room, record.team), null);
+    });
+    home();
+  }
+};
+
+root.addEventListener("click", event => {
+  const target = event.target.closest("button[data-action]");
+  if (!target || target.disabled) return;
+  const id = target.dataset.action;
+  if (Object.hasOwn(controls, id)) void run(() => controls[id](target));
+  else if (view.page === "host" && id.startsWith("host-")) void run(() => handleHostAction(id, target, {render, announce, ask}));
+});
+
+root.addEventListener("submit", event => {
+  const form = event.target;
+  if (form.dataset.form === "join") { event.preventDefault(); void run(join); }
+  else if (form.dataset.form === "lock") {
+    event.preventDefault();
+    void run(() => submitRound(form.dataset.round));
+  }
+});
+
+root.addEventListener("input", event => {
+  const input = event.target;
+  if (input.dataset.entry === "room") {
+    view.room = input.value;
+    refreshAssignment();
+  } else if (input.matches("textarea")) capture(input);
+  if (input.dataset.host) updateHostField(input);
+});
+
+function refreshAssignment() {
+  const info = root.querySelector("[data-assigned]");
+  const market = MARKETS[marketForTable(view.room, view.team)];
+  if (info && view.entryMode === "live") info.textContent = market && roomStart(view.room) !== null ? "Your assigned market is " + market.name + "." : "Use the table number assigned by the facilitator.";
+}
+
+root.addEventListener("change", event => {
+  const input = event.target;
+  if (input.dataset.entry === "team") { view.team = Number(input.value); refreshAssignment(); }
+  else if (input.dataset.entry === "market") view.market = input.value;
+  else if (input.dataset.draft === "choice") capture(input);
+  else if (input === ui.file) {
+    const file = input.files[0];
+    input.value = "";
+    if (file) void run(() => view.readingFor === "host" ? importTeamFile(file, {render, announce, ask}) : restoreTeam(file));
+  } else if (input.dataset.host) updateHostField(input, render);
+});
+
+async function syncTeam() {
+  if (view.page !== "team" || !view.record || view.busy) return;
+  const now = Date.now();
+  if (view.record.mode === "live" && teamKeyForView(now) !== view.pageKey) {
+    await run(async () => { await saveChange(record => record, now); render(); });
+  }
+  updateClock(now);
+}
+
+window.addEventListener("storage", event => {
+  if (view.page !== "team" || view.busy || event.key !== teamKey(view.record.room, view.record.team)) return;
+  void run(async () => {
+    const current = readSlot(view.record.room, view.record.team);
+    if (!current) { home(); return; }
+    if (current.history.length !== view.record.history.length || current.session !== view.record.session) {
+      view.record = current;
+      view.practiceReview = null;
+      announce("The team save was updated in another tab.");
+      render();
+    }
+  });
+});
+
+let previousHostTick = 0;
+setInterval(() => {
+  if (view.page === "team") void syncTeam();
+  if (view.page === "host") {
+    const now = Date.now();
+    if (now - previousHostTick > 350) { updateClock(now); previousHostTick = now; }
+  }
+}, 300);
+
+const last = activeTeam();
+if (knownTable(last)) {
+  view.room = last.room === "PRACTICE" ? "" : last.room;
+  view.entryMode = last.room === "PRACTICE" ? "practice" : "live";
+  view.team = last.team;
+  try {
+    const record = readSlot(last.room, last.team);
+    if (record) {
+      view.page = "team";
+      view.record = record;
+      await saveChange(current => current);
+    }
+  } catch (error) {
+    view.page = "home";
+    view.record = null;
+    announce(error.message, "warning");
+  }
+}
+render();

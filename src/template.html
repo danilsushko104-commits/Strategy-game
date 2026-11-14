@@ -1,0 +1,46 @@
+<section id="one-market-first" lang="en" aria-label="Revolut — One Market First">
+  <header class="pv-top">
+    <div class="pv-shell pv-top-inner">
+      <div class="pv-brand">
+        <span class="pv-brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none"><path d="M6 26V6h20v20h-6M6 26h6M16 29V13m-6 6 6-6 6 6" stroke="currentColor" stroke-width="2"/></svg>
+        </span>
+        <div><span class="pv-brand-name">One Market First</span><span class="pv-mono">Strategic Management · Seminar 5</span></div>
+      </div>
+      <nav class="pv-tools" aria-label="Game controls">
+        <button class="pv-button pv-button--quiet" type="button" data-action="materials">Rules</button>
+        <button class="pv-button pv-button--quiet" type="button" data-action="host">Facilitator</button>
+        <button class="pv-button pv-button--quiet" type="button" data-action="home" data-ui="home" hidden>Home</button>
+      </nav>
+    </div>
+  </header>
+  <div class="pv-shell pv-main">
+    <div class="pv-banner" data-ui="notice" role="status" hidden></div>
+    <div data-ui="screen"></div>
+    <noscript><p class="pv-banner">Enable JavaScript to run the simulation.</p></noscript>
+  </div>
+  <footer class="pv-footer">
+    <div class="pv-shell pv-footer-inner">
+      <p class="pv-mono">Revolut market-entry case</p>
+      <p class="pv-subtle">Educational simulation</p>
+    </div>
+  </footer>
+  <input type="file" data-ui="file" accept=".json,application/json" hidden>
+  <dialog class="pv-dialog" data-ui="materials" aria-labelledby="omf-materials-title">
+    <div class="pv-dialog-head">
+      <h2 id="omf-materials-title">Rules and materials</h2>
+      <button class="pv-button" type="button" data-action="close-materials" autofocus>Close</button>
+    </div>
+    <div class="pv-dialog-body" data-ui="materials-body"></div>
+  </dialog>
+  <dialog class="pv-dialog pv-confirm-dialog" data-ui="confirm" aria-labelledby="omf-confirm-title">
+    <div class="pv-dialog-head"><h2 id="omf-confirm-title" data-ui="confirm-title">Confirm</h2></div>
+    <div class="pv-dialog-body">
+      <p data-ui="confirm-text"></p>
+      <form method="dialog" class="pv-actions">
+        <button class="pv-button" value="cancel" autofocus>Cancel</button>
+        <button class="pv-button pv-button--primary" value="confirm" data-ui="confirm-yes">Confirm</button>
+      </form>
+    </div>
+  </dialog>
+</section>
