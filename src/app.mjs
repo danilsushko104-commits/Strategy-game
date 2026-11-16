@@ -2,22 +2,27 @@ import { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEE
 import { TEAMS, SCHEDULE, OUTCOMES, makeRoom, marketForTable, roomStart, phaseAt, replay, optionsFor, pendingFact,
   settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord, contentMismatch, gameScore } from './rules.mjs';
 import { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot, activeTeam, newId, newRecord, withSaveLock,
-  knownTable, SaveError, recoveryOptions, requestPersistence, readConfigCache, writeConfigCache } from './storage.mjs';
+  knownTable, SaveError, recoveryOptions, requestPersistence, readPlayer, writePlayer } from './storage.mjs';
 import { esc, button, disclosure, facts, stage, interval, countdown } from './presentation.mjs';
 import { renderHost, handleHostAction, updateHostField, hostClock, refreshHostData } from './host.mjs';
 import { trueNow, clockStatus, syncClock } from './clock.mjs';
 import { gameProgress } from './progress.mjs';
 import { tuning } from './tuning.mjs';
-import { configureSync, flushSync, syncSummary, syncEnabled, fetchConfig, fetchTeam, recordFromPayload } from './sync.mjs';
+import { configureSync, flushSync, syncSummary, syncEnabled, setParticipant, joinGame, fetchMe, setReady, claimCaptain, fetchTeam, recordFromPayload } from './sync.mjs';
 
 const root = document.querySelector("#one-market-first");
 const ui = Object.fromEntries([...root.querySelectorAll("[data-ui]")].map(element => [element.dataset.ui, element]));
 const view = {
-  page: "home", entryMode: "live", room: "", team: 1, market: "indonesia", record: null,
-  pageKey: "", recovery: null, config: {room: "", start: "", error: "", loading: false}, practiceReview: null, notice: "", readingFor: "team", busy: false, writes: Promise.resolve()
+  page: "home", entryMode: "live", team: 1, market: "indonesia", record: null,
+  pageKey: "", recovery: null, practiceReview: null, notice: "", readingFor: "team", busy: false, writes: Promise.resolve(),
+  // The person at this device (hosted game): who they are and what the sheet last said about their team.
+  player: null, me: null, meKey: "", pendingId: "", stayHome: false
 };
 configureSync(root.dataset.syncUrl);
 const marketList = Object.entries(MARKETS);
+view.player = hosted() ? readPlayer() : null;
+if (view.player) setParticipant(view.player.id);
+if (!hosted()) view.entryMode = "practice";
 const scheduledRoom = makeRoom(Date.UTC(2026, 0, 1, 15, 30), 0, "000");
 
 function announce(message, tone = "info") {
@@ -48,50 +53,78 @@ function sourceLinks(ids) {
 }
 
 function teamSelector() {
-  return '<label class="pv-field">Assigned table<select class="pv-input" data-entry="team">' +
-    TEAMS.map(team => '<option value="' + team + '"' + (view.team === team ? " selected" : "") + ">Table " + team + "</option>").join("") +
+  return '<label class="pv-field">Team<select class="pv-input" data-entry="team">' +
+    TEAMS.map(team => '<option value="' + team + '"' + (view.team === team ? " selected" : "") + ">Team " + team + "</option>").join("") +
     "</select></label>";
 }
 
-// The game runs against a Google Sheet when the page carries its address. Then the facilitator's room comes
-// from the sheet and a team only picks its table. Without an address (local trials) the old entry stays.
+// The game runs against a Google Sheet when the page carries its address. Then players sign up, the facilitator forms
+// the teams and starts the game, and nobody types a room code. Without an address the page only offers practice.
 function hosted() {
   return syncEnabled();
 }
 
-function practiceAllowed() {
-  return !hosted() || location.hash === "#practice";
+function playerList(members) {
+  return '<ul class="pv-team-list">' + members.map(member => "<li>" + esc(member.name) + (member.captain ? ' <span class="pv-mono">captain</span>' : "") +
+    (member.ready ? ' <span class="pv-mono">ready</span>' : "") + "</li>").join("") + "</ul>";
+}
+
+function signUpForm() {
+  return `<form data-form="signup">
+      <div class="pv-entry-fields">
+        <label class="pv-field">Your name<input class="pv-input" name="name" autocomplete="given-name" maxlength="40" required placeholder="Name and first letter of surname"></label>
+        <fieldset class="pv-field pv-radios"><legend>Are you an international student?</legend>
+          <label><input type="radio" name="international" value="yes" required> Yes, international</label>
+          <label><input type="radio" name="international" value="no"> No, not international</label></fieldset>
+      </div>
+      <p class="pv-inline-note pv-block-gap">The facilitator will form the teams at random and keep a balanced mix. You will see your team number here.</p>
+      <div class="pv-entry-foot"><div class="pv-actions"><button type="submit" class="pv-button pv-button--primary">Join your team</button></div></div>
+    </form>`;
+}
+
+// What the player sees while the teams are not playing yet, and after: always the same card, driven by the sheet.
+function playerPanel() {
+  const me = view.me;
+  if (!view.player) return signUpForm();
+  if (!me) return '<p class="pv-inline-note" data-assigned>Connecting to the game…</p>';
+  if (!me.team) {
+    return `<div class="pv-record pv-checkpoint"><p class="pv-mono">You are in</p><h3>${esc(view.player.name)}</h3>
+      <p>${me.players} ${me.players === 1 ? "player has" : "players have"} joined. The facilitator will form the teams shortly: stay on this page.</p></div>`;
+  }
+  const market = me.state === "started" && roomStart(me.room) !== null ? MARKETS[marketForTable(me.room, me.team)] : null;
+  const running = me.state === "started";
+  const captain = me.members.find(member => member.captain);
+  const lines = me.captain ?
+    "You are the captain: the team plays on this device. Sit together and decide together." :
+    "Your captain " + (captain ? captain.name : "") + " plays for the team on their device. Sit together and decide together.";
+  const actions = running ?
+    (me.captain ? button(view.stayHome ? "Back to the game" : "Open the game", "enter-game", "primary") : "") :
+    button(me.ready ? "Not ready yet" : "I’m ready", "ready", me.ready ? "text" : "primary");
+  return `<div class="pv-record pv-checkpoint"><p class="pv-mono">Your team</p><h3>Team ${me.team}${market ? " · " + esc(market.name) : ""}</h3>
+      <p>${esc(lines)}</p>
+      <p>${running ? (me.captain ? "The game is running." : "The game is running. Your captain has the screen.") : me.ready ? "You are ready. The facilitator starts the game when everyone is." : "Press the button when you are ready. The facilitator starts the game when everyone is."}</p></div>
+    <div class="pv-panel"><h3>Your teammates</h3>${playerList(me.members)}</div>
+    <div class="pv-entry-foot"><div class="pv-actions">${actions}
+      ${me.captain ? "" : button("Play on this device instead", "captain", "text")}</div></div>`;
 }
 
 function entryPanel() {
-  if (hosted() && view.entryMode === "live") {
-    const {room, error, loading} = view.config;
-    const market = room && roomStart(room) !== null ? MARKETS[marketForTable(room, view.team)] : null;
-    const note = loading ? "Checking which room the facilitator opened…" : error ? esc(error) : !room ? "The facilitator has not opened a room yet." :
-      "Choose the table the facilitator gave you." + (market ? " Your market is " + esc(market.name) + "." : "");
-    return `<form data-form="join">
-        <div class="pv-entry-fields">${teamSelector()}</div>
-        <p class="pv-inline-note pv-block-gap" data-assigned>${note}</p>
-        <div class="pv-entry-foot"><div class="pv-actions">
-          <button type="submit" class="pv-button pv-button--primary"${room ? "" : " disabled"}>Open team dashboard</button>
-          ${!room || error ? button("Check again", "config-retry", "") : ""}
-        </div></div>
-      </form>`;
-  }
-  const room = view.room.toUpperCase().trim();
-  const assigned = roomStart(room) === null ? null : MARKETS[marketForTable(room, view.team)];
+  if (hosted() && view.entryMode === "live") return `<div class="pv-entry-body" data-assigned>${playerPanel()}${location.hash === "#practice" ? '<div class="pv-actions pv-file-actions">' + button("Practice", "entry-mode", "text") + "</div>" : ""}</div>`;
   return `<form data-form="join">
         <div class="pv-entry-fields">
-          ${view.entryMode === "live" ? `<label class="pv-field">Room code<input class="pv-input" name="room" data-entry="room" value="${esc(view.room)}" autocapitalize="characters" autocomplete="off" maxlength="23" placeholder="OMF-…"></label>
-          ${teamSelector()}` : `<label class="pv-field">Practice market<select class="pv-input" data-entry="market">${marketList.map(([id, market]) =>
-            `<option value="${id}"${view.market === id ? " selected" : ""}>${market.name}</option>`).join("")}</select></label>${teamSelector()}`}
+          <label class="pv-field">Practice market<select class="pv-input" data-entry="market">${marketList.map(([id, market]) =>
+            `<option value="${id}"${view.market === id ? " selected" : ""}>${market.name}</option>`).join("")}</select></label>${teamSelector()}
         </div>
-        <p class="pv-inline-note pv-block-gap" data-assigned>${assigned && view.entryMode === "live" ? "Your assigned market is " + esc(assigned.name) + "." : "Use the table number assigned by the facilitator."}</p>
+        <p class="pv-inline-note pv-block-gap">Practice alone: nothing is sent anywhere.</p>
         <div class="pv-entry-foot"><div class="pv-actions">
-          <button type="submit" class="pv-button pv-button--primary">${view.entryMode === "live" ? "Open team dashboard" : "Open practice dashboard"}</button>
-          ${practiceAllowed() ? button(view.entryMode === "live" ? "Practice without a room" : "Back to classroom", "entry-mode", "text") : ""}
+          <button type="submit" class="pv-button pv-button--primary">Open practice dashboard</button>
+          ${hosted() ? button("Back to the game", "entry-mode", "text") : ""}
         </div></div>
       </form>`;
+}
+
+function entryTitle() {
+  return hosted() && view.entryMode === "live" ? (view.player ? "Your team" : "Join your team") : "Practice";
 }
 
 function homeScreen() {
@@ -100,7 +133,7 @@ function homeScreen() {
       <span class="pv-kicker pv-mono">Revolut APAC case</span>
       <h1 id="omf-title" tabindex="-1"><span>One Market</span><span>First</span></h1>
       <p>Four consulting teams. One expansion mandate. Make the case for funding your market first.</p>
-      ${button("Join your table", "jump-entry", "primary")}
+      ${button("Join your team", "jump-entry", "primary")}
     </div><div class="pv-hero-art" aria-hidden="true">
       <span class="pv-art-code pv-art-code--top pv-mono">APAC · Market entry</span>
       <!-- COVER -->
@@ -108,27 +141,9 @@ function homeScreen() {
     <div class="pv-tape pv-mono"><span><b>04</b><small>Markets</small></span><span><b>${String(CONFIG.budget).padStart(2, "0")}</b><small>Credits per team</small></span><span><b>01</b><small>Funding mandate</small></span></div>
   </section>
   <section class="pv-entry" aria-labelledby="omf-entry-title">
-    <div class="pv-section-head"><h2 id="omf-entry-title" tabindex="-1">${view.entryMode === "live" ? "Join the classroom" : "Practice without a room"}</h2></div>
+    <div class="pv-section-head"><h2 id="omf-entry-title" tabindex="-1">${entryTitle()}</h2></div>
     <div class="pv-entry-panel">${entryPanel()}</div>
   </section>`;
-}
-
-// Which room the facilitator opened: read from the sheet, remembered for a reload without a connection.
-async function loadConfig() {
-  if (!hosted()) return;
-  view.config = {...view.config, loading: true, error: ""};
-  if (view.page === "home") render();
-  try {
-    const config = await fetchConfig();
-    view.config = {...config, error: "", loading: false};
-    writeConfigCache(config);
-  } catch (error) {
-    const cached = readConfigCache();
-    view.config = {room: cached?.room ?? "", start: cached?.start ?? "", loading: false,
-      error: "Could not reach Google Sheets" + (cached?.room ? "; using the room remembered on this device" : "") + ". " + (error.message || "")};
-  }
-  if (view.room !== view.config.room) view.room = view.config.room;
-  if (view.page === "home") render();
 }
 
 function renderMaterials() {
@@ -222,7 +237,7 @@ function meterHtml(record) {
 function stickyBar(record, state, phase, path) {
   const market = MARKETS[record.market];
   return `<div class="pv-sticky" data-sticky><div class="pv-bar">
-      <div class="pv-bar-id"><p class="pv-mono">Table ${record.team} · ${record.mode === "practice" ? "Practice" : esc(record.room)}</p>
+      <div class="pv-bar-id"><p class="pv-mono">Team ${record.team}${record.mode === "practice" ? " · Practice" : ""}</p>
         <h1 class="pv-board-title">${esc(market.name)}</h1><p class="pv-board-context">${esc(market.city)} · ${market.currency}</p></div>
       <div class="pv-bar-stage"><p class="pv-mono" data-stage-name>${esc(stageLabel(phase))}</p>
         <div class="pv-clock" data-clock hidden><span data-clock-label></span><strong data-clock-time></strong></div></div>
@@ -404,8 +419,8 @@ function recoveryScreen() {
     (option.rounds ? "decisions locked through " + ROUNDS[option.rounds - 1].id : "no decisions locked yet") + " " +
     button("Restore this copy", "recover-pick", "", 'data-index="' + index + '"') + "</li>").join("") + "</ul>" :
     "<p>No readable copy was found in this browser.</p>";
-  return stage("This saved game could not be opened", "Table " + team + " · " + (room === "PRACTICE" ? "Practice" : room),
-    "<p>" + esc(message) + "</p><p>Restore the newest readable copy below" + (hosted() && room !== "PRACTICE" ? " or load the table from Google Sheets" : "") +
+  return stage("This saved game could not be opened", "Team " + team + (room === "PRACTICE" ? " · Practice" : ""),
+    "<p>" + esc(message) + "</p><p>Restore the newest readable copy below" + (hosted() && room !== "PRACTICE" ? " or load the team from Google Sheets" : "") +
     ". The damaged save stays untouched until you choose.</p>" + list +
     '<div class="pv-file-actions pv-actions">' + (hosted() && room !== "PRACTICE" ? button("Load from Google Sheets", "recover-sheet", "primary") : "") + button("Back to home", "home") + "</div>", "event");
 }
@@ -484,38 +499,39 @@ function showTeam(record, message = "") {
   void triggerSync();
 }
 
-async function join() {
-  const live = view.entryMode === "live";
-  const room = live ? (hosted() ? view.config.room : view.room.trim().toUpperCase()) : "PRACTICE";
-  if (live && (!room || roomStart(room) === null)) throw new Error(hosted() ? "The facilitator has not opened a room yet." : "Enter the room code shown by the facilitator.");
-  const market = live ? marketForTable(room, view.team) : view.market;
+// Opens the team's dashboard. In the hosted game the room, team and market come from the sheet; in practice and in
+// the older classroom entry they come from the form. `auto` means no one pressed a button: a problem is reported, not asked about.
+async function openTable({room, team, market, mode, auto = false}) {
+  view.team = team;
+  const live = mode === "live";
   let record;
   let resumed = null;
   try {
-    // A practice table keeps its saved game. Choosing another market means starting over, so ask first.
-    let saved = readSlot(room, view.team);
+    // A practice team keeps its saved game. Choosing another market means starting over, so ask first.
+    let saved = readSlot(room, team);
     if (saved && saved.market !== market) {
-      const replace = await ask("Start a new practice game?", "Table " + view.team + " already has a saved practice game for " + MARKETS[saved.market].name +
+      const replace = await ask("Start a new practice game?", "Team " + team + " already has a saved practice game for " + MARKETS[saved.market].name +
         " (" + saved.history.length + " of " + ROUNDS.length + " decisions). Replace it with a new game for " + MARKETS[market].name + "?", "Replace it");
       if (!replace) return;
       await view.writes;
-      clearSlot(room, view.team);
+      clearSlot(room, team);
       saved = null;
     }
-    // On a new device (or after the browser data was cleared) the sheet holds the table's earlier game.
-    if (!saved && live && hosted()) {
+    // On a new device (or after the browser data was cleared) the sheet holds the team's earlier game.
+    if (!saved && live && hosted() && view.player) {
       try {
-        const payload = await fetchTeam(room, view.team);
+        const payload = await fetchTeam(view.player.id);
         if (payload.decisions.length || payload.notes.length || payload.brief) resumed = recordFromPayload(payload, market);
       } catch (error) {
-        if (!await ask("Google Sheets cannot be reached", "The page could not check Google Sheets for an earlier game of table " + view.team + " (" + (error.message || "no connection") +
-            "). If this table has already played, starting again may conflict with its recorded decisions. Start anyway?", "Start anyway")) return;
+        if (auto) throw new Error("Google Sheets cannot be reached (" + (error.message || "no connection") + "). Press “Open the game” to try again.");
+        if (!await ask("Google Sheets cannot be reached", "The page could not check Google Sheets for an earlier game of team " + team + " (" + (error.message || "no connection") +
+            "). If this team has already played, starting again may conflict with its recorded decisions. Start anyway?", "Start anyway")) return;
       }
     }
-    record = await withSaveLock(teamKey(room, view.team), () => {
-      let record = readSlot(room, view.team);
-      if (record && record.market !== market) throw new Error("This table has a saved game for another market. Reopen the page and try again.");
-      record = record || resumed || newRecord(view.entryMode, room, view.team, market);
+    record = await withSaveLock(teamKey(room, team), () => {
+      let record = readSlot(room, team);
+      if (record && record.market !== market) throw new Error("This team has a saved game for another market. Reopen the page and try again.");
+      record = record || resumed || newRecord(mode, room, team, market);
       record = settleDeadlines(record, trueNow());
       storeRecord(record);
       return record;
@@ -524,7 +540,62 @@ async function join() {
     if (error instanceof SaveError) return showRecovery(error);
     throw error;
   }
+  view.stayHome = false;
   showTeam(record, resumed && record.session === resumed.session ? "Continued from Google Sheets: " + record.history.length + " of " + ROUNDS.length + " decisions restored." : "");
+}
+
+// The practice form: one team on this device, nothing is sent anywhere.
+async function join() {
+  await openTable({room: "PRACTICE", team: view.team, market: view.market, mode: "practice"});
+}
+
+// The captain's device opens the game as soon as the facilitator starts it.
+async function enterGame(auto = false) {
+  const me = view.me;
+  if (!view.player || !me || me.state !== "started" || !me.captain || roomStart(me.room) === null) return;
+  await openTable({room: me.room, team: me.team, market: marketForTable(me.room, me.team), mode: "live", auto});
+}
+
+async function signUp(form) {
+  const data = new FormData(form);
+  const international = data.get("international");
+  if (!international) throw new Error("Say whether you are an international student.");
+  view.pendingId ||= newId();
+  const me = await joinGame(view.pendingId, String(data.get("name") || ""), international === "yes");
+  view.player = {id: view.pendingId, name: me.name};
+  view.pendingId = "";
+  writePlayer(view.player);
+  setParticipant(view.player.id);
+  view.me = me;
+  view.meKey = JSON.stringify(me);
+  announce("");
+  render("#omf-entry-title");
+}
+
+// Asks the sheet where this player stands; the page changes when the facilitator forms the teams or starts the game.
+async function pollMe() {
+  if (!hosted() || !view.player || view.page !== "home" || view.entryMode !== "live" || document.visibilityState === "hidden") return;
+  let me;
+  try { me = await fetchMe(view.player.id); }
+  catch { return; }
+  if (view.page !== "home") return;
+  if (!me.found) {
+    view.player = null;
+    view.me = null;
+    view.meKey = "";
+    writePlayer(null);
+    setParticipant("");
+    announce("The game was reset. Join your team again.", "warning");
+    render("#omf-entry-title");
+    return;
+  }
+  const key = JSON.stringify(me);
+  view.me = me;
+  if (key !== view.meKey) {
+    view.meKey = key;
+    render();
+  }
+  if (me.state === "started" && me.captain && !view.stayHome && !view.busy) await run(() => enterGame(true));
 }
 
 function saveChange(change, now = trueNow()) {
@@ -596,7 +667,7 @@ async function restoreRecord(record, message, confirm = true) {
   const key = teamKey(record.room, record.team);
   await view.writes;
   const before = getStored(key);
-  if (confirm && before !== null && !await ask("Replace a saved game?", "Replace the saved game of table " + record.team + " (" + MARKETS[record.market].name + ") with this copy?", "Replace")) return;
+  if (confirm && before !== null && !await ask("Replace a saved game?", "Replace the saved game of team " + record.team + " (" + MARKETS[record.market].name + ") with this copy?", "Replace")) return;
   const next = await withSaveLock(key, () => {
     if (getStored(key) !== before) throw new Error("The save changed. Pick the file again.");
     const restored = settleDeadlines({...record, session: newId()}, trueNow());
@@ -609,8 +680,8 @@ async function restoreRecord(record, message, confirm = true) {
 function home() {
   if (view.record) {
     view.entryMode = view.record.mode;
-    if (view.record.mode === "live") view.room = view.record.room;
-    else view.market = view.record.market;
+    view.stayHome = view.record.mode === "live";
+    if (view.record.mode !== "live") view.market = view.record.market;
   }
   view.page = "home";
   view.record = null;
@@ -642,11 +713,24 @@ const controls = {
     heading.focus({preventScroll: true});
     heading.scrollIntoView({block: "start", behavior: "instant"});
   },
-  "config-retry": () => loadConfig(),
   "recover-sheet": async () => {
     const {room, team} = view.recovery;
-    const payload = await fetchTeam(room, team);
+    const payload = await fetchTeam(view.player?.id ?? "");
     await restoreRecord(recordFromPayload(payload, marketForTable(room, team)), "Loaded from Google Sheets.", false);
+  },
+  "enter-game": () => { view.stayHome = false; return enterGame(false); },
+  ready: async () => {
+    view.me = await setReady(view.player.id, !view.me.ready);
+    view.meKey = JSON.stringify(view.me);
+    render();
+  },
+  captain: async () => {
+    if (!await ask("Play on this device?", "Your team plays on one device, the captain’s. If you take over, the other device should stop playing.", "Play here")) return;
+    view.me = await claimCaptain(view.player.id);
+    view.meKey = JSON.stringify(view.me);
+    view.stayHome = false;
+    render();
+    await enterGame(false);
   },
   "entry-mode": () => { view.entryMode = view.entryMode === "live" ? "practice" : "live"; render("#omf-entry-title"); },
   "practice-b": async () => {
@@ -662,7 +746,7 @@ const controls = {
   "next-practice": () => { view.practiceReview = null; render("#omf-stage-title"); },
   reset: async () => {
     const record = view.record;
-    if (record?.mode !== "practice" || !await ask("Reset the practice table?", "Its locally saved choices and notes will be removed.", "Reset practice")) return;
+    if (record?.mode !== "practice" || !await ask("Reset the practice team?", "Its locally saved choices and notes will be removed.", "Reset practice")) return;
     await view.writes;
     await withSaveLock(teamKey(record.room, record.team), () => {
       if (readSlot(record.room, record.team)?.session !== record.session) throw new Error("The practice save has changed.");
@@ -683,6 +767,7 @@ root.addEventListener("click", event => {
 root.addEventListener("submit", event => {
   const form = event.target;
   if (form.dataset.form === "join") { event.preventDefault(); void run(join); }
+  else if (form.dataset.form === "signup") { event.preventDefault(); void run(() => signUp(form)); }
   else if (form.dataset.form === "lock") {
     event.preventDefault();
     void run(() => submitRound(form.dataset.round));
@@ -691,24 +776,13 @@ root.addEventListener("submit", event => {
 
 root.addEventListener("input", event => {
   const input = event.target;
-  if (input.dataset.entry === "room") {
-    view.room = input.value;
-    refreshAssignment();
-  } else if (input.matches("textarea")) capture(input);
+  if (input.matches("textarea")) capture(input);
   if (input.dataset.host) updateHostField(input);
 });
 
-function refreshAssignment() {
-  const info = root.querySelector("[data-assigned]");
-  const market = roomStart(view.room) === null ? null : MARKETS[marketForTable(view.room, view.team)];
-  if (!info || view.entryMode !== "live") return;
-  info.textContent = hosted() ? (view.config.room ? "Choose the table the facilitator gave you." + (market ? " Your market is " + market.name + "." : "") : "The facilitator has not opened a room yet.") :
-    market ? "Your assigned market is " + market.name + "." : "Use the table number assigned by the facilitator.";
-}
-
 root.addEventListener("change", event => {
   const input = event.target;
-  if (input.dataset.entry === "team") { view.team = Number(input.value); refreshAssignment(); }
+  if (input.dataset.entry === "team") view.team = Number(input.value);
   else if (input.dataset.entry === "market") view.market = input.value;
   else if (input.dataset.draft === "choice" || input.dataset.draft === "problem") capture(input);
   else if (input.dataset.host) updateHostField(input, render);
@@ -739,12 +813,13 @@ window.addEventListener("storage", event => {
 
 let previousHostTick = 0;
 setInterval(() => void triggerSync(), 30_000);
+setInterval(() => void pollMe(), 5000);
 window.addEventListener("online", () => void triggerSync());
 
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") void triggerSync(); });
 
 // The facilitator's page follows the sheet.
-setInterval(() => { if (view.page === "host") void refreshHostData({render, announce}); }, 15_000);
+setInterval(() => { if (view.page === "host") void refreshHostData({render, announce}); }, 8_000);
 
 setInterval(() => {
   if (view.page === "team") void syncTeam();
@@ -760,10 +835,8 @@ await Promise.race([syncing, new Promise(resolve => setTimeout(resolve, 3000))])
 void syncing.then(() => renderNotice());
 setInterval(() => void syncClock().then(() => renderNotice(), () => {}), 10 * 60_000);
 
-void loadConfig();
 const last = activeTeam();
 if (knownTable(last)) {
-  view.room = last.room === "PRACTICE" ? "" : last.room;
   view.entryMode = last.room === "PRACTICE" ? "practice" : "live";
   view.team = last.team;
   try {
@@ -782,3 +855,4 @@ if (knownTable(last)) {
 }
 render();
 void triggerSync();
+void pollMe();

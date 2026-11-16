@@ -10,7 +10,7 @@ import { readSyncState, writeSyncState, newRecord } from './storage.mjs';
 // Events carry a deterministic id, so the sheet can drop duplicates and a re-send is always safe.
 
 const SEPARATOR = "␟";
-const state = {endpoint: "", status: "off", total: 0, pending: 0, pendingNotes: 0, error: ""};
+const state = {endpoint: "", status: "off", total: 0, pending: 0, pendingNotes: 0, error: "", participant: ""};
 let sending = null;
 
 export function configureSync(url) {
@@ -18,6 +18,11 @@ export function configureSync(url) {
   state.endpoint = /^(https:\/\/[^\s]+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/[^\s]*)$/.test(endpoint) ? endpoint : "";
   state.status = state.endpoint ? "idle" : "off";
   state.error = "";
+}
+
+// The player's secret pass: the sheet accepts a team's decisions and notes only from a player of that team.
+export function setParticipant(id) {
+  state.participant = String(id || "");
 }
 
 export function syncStatus() {
@@ -69,7 +74,7 @@ async function post(payload, request) {
   }
 }
 
-const envelope = () => ({v: 1, sentAt: new Date(trueNow()).toISOString(), clockOffsetMs: Math.round(clockStatus().offset)});
+const envelope = () => ({v: 1, participant: state.participant, sentAt: new Date(trueNow()).toISOString(), clockOffsetMs: Math.round(clockStatus().offset)});
 
 // Worksheet notes and the Board Brief that changed since they were last sent.
 export function buildNotesPayload(record, sent) {
@@ -174,9 +179,10 @@ export function syncSummary() {
   return text ? {state: status, text} : null;
 }
 
-// ---- Reading from the sheet ------------------------------------------------------------------------------
-// The sheet is the only store, so a page that has no local save asks it (a team continuing on another device),
-// the facilitator's page reads every team from it, and the room and start time come from its Settings.
+// ---- Talking to the sheet -------------------------------------------------------------------------------
+// The sheet is the only store. A player's page asks it which team the player is in and, once the game runs, for the
+// team's earlier game (continuing on another device). The facilitator's page forms the teams, starts the game and
+// reads every team. The room code is an internal detail: players never type it.
 
 export function syncEnabled() {
   return !!state.endpoint;
@@ -191,30 +197,58 @@ async function read(query, request) {
   return reply;
 }
 
-// {room, start}: what the facilitator opened. Empty room means nothing is open yet.
-export async function fetchConfig({request = globalThis.fetch} = {}) {
-  const reply = await read({action: "config"}, request);
-  return {room: reply.room || "", start: reply.start || ""};
-}
-
-export async function fetchTeam(room, team, {request = globalThis.fetch} = {}) {
-  return read({action: "team", room, team}, request);
-}
-
-export async function fetchRoom(room, token, {request = globalThis.fetch} = {}) {
-  return read({action: "room", room, token}, request);
-}
-
-// The facilitator opens a room: it is stored in the sheet's Settings for the teams to read.
-export async function publishRoom(room, start, token, {request = globalThis.fetch} = {}) {
+async function command(body, request) {
   const response = await request(state.endpoint, {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, redirect: "follow",
-    body: JSON.stringify({v: 1, type: "room", token, room, start: new Date(start).toISOString()})});
+    body: JSON.stringify({v: 1, ...body})});
+  if (!response.ok) throw new Error("The sheet answered with status " + response.status + ".");
   const reply = await response.json();
-  if (!reply?.ok) throw new Error(reply?.error || "The sheet did not accept the room.");
+  if (!reply?.ok) throw new Error(reply?.error || "The sheet did not accept the request.");
   return reply;
 }
 
-// A table's saved game rebuilt from what the sheet holds. The record is checked like any other save.
+const withRequest = ({request = globalThis.fetch} = {}) => request;
+
+// Player: {found, state: lobby | formed | started, team, captain, ready, members, room, start}
+export function joinGame(id, name, international, options) {
+  return command({type: "join", id, name, international}, withRequest(options));
+}
+
+export function fetchMe(id, options) {
+  return read({action: "me", id}, withRequest(options));
+}
+
+export function setReady(id, ready, options) {
+  return command({type: "ready", id, ready}, withRequest(options));
+}
+
+export function claimCaptain(id, options) {
+  return command({type: "captain", id}, withRequest(options));
+}
+
+// The player's own team: its decisions and notes.
+export function fetchTeam(id, options) {
+  return read({action: "team", id}, withRequest(options));
+}
+
+// Facilitator
+export function fetchRoster(token, options) {
+  return read({action: "roster", token}, withRequest(options));
+}
+
+export function fetchRoom(token, options) {
+  return read({action: "room", token}, withRequest(options));
+}
+
+// type: form | start | reset | demo
+export function hostCommand(type, token, extra = {}, options) {
+  return command({type, token, ...extra}, withRequest(options));
+}
+
+export function pushScores(token, table, options) {
+  return command({type: "scores", token, table}, withRequest(options));
+}
+
+// A team's saved game rebuilt from what the sheet holds. The record is checked like any other save.
 export function recordFromPayload(payload, market) {
   const notes = {};
   for (const item of payload.notes || []) notes[item.round + "." + item.field] = item.text;

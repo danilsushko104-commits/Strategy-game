@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { CONFIG } from '../src/scenario.mjs';
+import { createServer } from '../scripts/serve.mjs';
+import { hostApi } from '../scripts/game-test-kit.mjs';
 
 // Browser tests of the generated page. They need Playwright and are skipped where it is not installed.
 let chromium = null;
@@ -38,7 +40,6 @@ async function lockCurrentRound(page, {confirm = false} = {}) {
 
 test("A damaged save opens a recovery screen after a reload and the newest readable copy restores the game", {skip}, async () => {
   await withPage(async page => {
-    await page.click("text=Practice without a room");
     await page.click('button:has-text("Open practice dashboard")');
     for (let round = 0; round < 3; round++) {
       await lockCurrentRound(page);
@@ -61,53 +62,65 @@ test("A damaged save opens a recovery screen after a reload and the newest reada
   });
 });
 
-test("A live table mirrors its save into IndexedDB", {skip}, async () => {
-  await withPage(async page => {
-    // The facilitator opens a room whose R1 started five minutes ago (the field takes Moscow time).
-    const moscow = new Date(Date.now() - 5 * 60_000 + 3 * 3_600_000).toISOString().slice(0, 16);
-    await page.click("button[data-action=host]");
-    await page.fill('[data-host="start"]', moscow);
-    await page.click('button:has-text("Create a new room")');
-    const room = await page.locator(".pv-record h3").first().innerText();
-    await page.click("button[data-action=home]");
-    await page.fill('input[data-entry="room"]', room);
-    await page.click('button:has-text("Open team dashboard")');
-    await lockCurrentRound(page, {confirm: true});
-    await page.locator(".pv-sidebar-card .pv-log li").first().waitFor();
+test("A live team mirrors its save into IndexedDB", {skip}, async () => {
+  const server = createServer({fakeSheets: {password: "a long test password"}});
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const base = "http://127.0.0.1:" + server.address().port + "/";
+  const api = hostApi(base, "a long test password");
+  try {
+    await withPage(async page => {
+      await page.fill('input[name=name]', "Anna K");
+      await page.check('input[name=international][value=no]');
+      await page.click('form[data-form=signup] button[type=submit]');
+      await page.locator(".pv-entry-panel .pv-record").waitFor();
+      await api.demo(7);
+      await api.form();
+      await api.captain(server.backend.table("Players").find(row => row.name === "Anna K").id);
+      await api.start(5);
+      await page.locator(".pv-sticky").waitFor({timeout: 20_000});
+      await lockCurrentRound(page, {confirm: true});
+      await page.locator(".pv-sidebar-card .pv-log li").first().waitFor();
 
-    const mirrored = await page.evaluate(name => new Promise((resolve, reject) => {
-      const open = indexedDB.open(name, 1);
-      open.onerror = () => reject(open.error);
-      open.onsuccess = () => {
-        try {
-          const get = open.result.transaction("kv").objectStore("kv").getAll();
-          get.onsuccess = () => resolve(get.result.map(value => JSON.parse(value).history.length));
-          get.onerror = () => reject(get.error);
-        } catch (error) { reject(error); }
-      };
-    }), CONFIG.game + ":" + CONFIG.version);
-    assert.ok(mirrored.includes(1), "the IndexedDB copy holds the locked decision: " + mirrored);
-  });
+      const mirrored = await page.evaluate(name => new Promise((resolve, reject) => {
+        const open = indexedDB.open(name, 1);
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          try {
+            const get = open.result.transaction("kv").objectStore("kv").getAll();
+            get.onsuccess = () => resolve(get.result.map(value => JSON.parse(value).history.length));
+            get.onerror = () => reject(get.error);
+          } catch (error) { reject(error); }
+        };
+      }), CONFIG.game + ":" + CONFIG.version);
+      assert.ok(mirrored.includes(1), "the IndexedDB copy holds the locked decision: " + mirrored);
+    }, base, [/net::ERR_FAILED/]);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
 });
 
-test("The facilitator checklist guides from the empty room and remembers the tick", {skip}, async () => {
-  await withPage(async page => {
-    await page.click("button[data-action=host]");
-    await page.click('button:has-text("Create a new room")');
-    const now = page.locator(".pv-checklist li[data-state=now]");
-    assert.match(await now.innerText(), /Every table has joined/);
-    assert.match(await page.locator(".pv-next").innerText(), /Ask every team to open the page/);
-    assert.match(await page.locator("[data-host-progress]").innerText(), /R1 opens at \d\d:\d\d Moscow time, in \d+:\d\d/);
-
-    await page.check('input[data-host="joined"]');
-    assert.match(await page.locator(".pv-checklist li[data-state=now]").innerText(), /The game is played/);
-    assert.match(await page.locator(".pv-next").innerText(), /Wait for R1/);
-
-    await page.reload();
-    await page.click("button[data-action=host]");
-    assert.equal(await page.locator('input[data-host="joined"]').isChecked(), true, "the tick survives a reload");
-    assert.match(await page.locator(".pv-checklist li[data-state=now]").innerText(), /The game is played/);
-    await page.uncheck('input[data-host="joined"]');
-    assert.match(await page.locator(".pv-checklist li[data-state=now]").innerText(), /Every table has joined/);
-  });
+test("The facilitator's checklist follows the game and the page has no room code to hand out", {skip}, async () => {
+  const server = createServer({fakeSheets: {password: "a long test password"}});
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const base = "http://127.0.0.1:" + server.address().port + "/";
+  const api = hostApi(base, "a long test password");
+  try {
+    await withPage(async page => {
+      await api.demo(8);
+      await api.form();
+      assert.equal((await api.start(-10)).ok, true, "R1 opens in ten minutes");
+      await page.click("button[data-action=host]");
+      await page.fill('input[data-host="token"]', "a long test password");
+      await page.click('button:has-text("Refresh now")');
+      await page.locator(".pv-checklist").waitFor();
+      assert.match(await page.locator(".pv-checklist li[data-state=done]").first().innerText(), /Game started/);
+      assert.match(await page.locator(".pv-checklist li[data-state=now]").innerText(), /The game is played/);
+      assert.match(await page.locator(".pv-next").innerText(), /Wait for R1/);
+      assert.match(await page.locator("[data-host-progress]").innerText(), /R1 opens at \d\d:\d\d Moscow time, in \d+:\d\d/);
+      assert.equal(await page.locator("text=/OMF-/").count(), 0, "no room code anywhere");
+      assert.equal(await page.locator('input[data-host="joined"]').count(), 0, "nothing to tick by hand: the sheet knows who joined");
+    }, base, [/net::ERR_FAILED/]);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
 });

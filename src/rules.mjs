@@ -531,7 +531,7 @@ export function standings(grades, records = {}) {
 // The facilitator's "what's next" list. Only the facilitator's own browser knows these facts: the room,
 // the clock, the team data read from the sheet and the expert sheets. Whether the teams have joined cannot be seen,
 // so that step is ticked by hand.
-export function hostChecklist({room, now, grades, records, joined}) {
+export function hostChecklist({room, now, grades, records}) {
   const phase = phaseAt(room, now);
   const counted = tuning().gameShare > 0;
   const full = TEAMS.filter(team => records?.[team]?.history?.length === ROUNDS.length);
@@ -540,29 +540,24 @@ export function hostChecklist({room, now, grades, records, joined}) {
   const sheets = TEAMS.reduce((sum, team) => sum + [0, 1, 2].filter(expert => grades?.[team]?.[expert]?.complete).length, 0);
   const ranked = standings(grades, records).every(row => row.key);
   const finished = ["PREP", "PITCH", "DEBRIEF", "END"].includes(phase.id);
-  const list = (tables) => tables.map(team => "table " + team).join(", ");
+  const list = (teams) => teams.map(team => "team " + team).join(", ");
   const steps = [
-    {id: "room", title: "Room created", done: true,
-      detail: "Show the room code and the table assignment to the students."},
-    // Team data in the sheet, or a finished game, proves that the tables were in.
-    {id: "joined", title: "Every table has joined", done: !!joined || finished || TEAMS.some(team => records?.[team]),
-      detail: "Each team opens the page and enters the room code with its table number. This page cannot see the teams, so tick the box once you have checked."},
+    {id: "started", title: "Game started", done: true, detail: "The teams were formed and the game began. Each team plays on its captain’s device."},
     {id: "game", title: "The game is played", done: finished,
       detail: finished ? "All seven rounds are over." : phase.id === "SETUP" ? "R1 has not started yet." : "The rounds are running."},
     {id: "files", title: "Team data from Google Sheets", done: counted ? full.length === TEAMS.length : true,
-      detail: (counted ? "" : "Optional without a game result. ") + full.length + " of " + TEAMS.length + " tables have all " + ROUNDS.length + " decisions" +
+      detail: (counted ? "" : "Optional without a game result. ") + full.length + " of " + TEAMS.length + " teams have all " + ROUNDS.length + " decisions" +
         (missing.length ? ". Missing: " + list(missing) : "") + (partial.length ? ". Still playing: " + list(partial) : "") + "."},
     {id: "sheets", title: "Expert sheets complete", done: sheets === TEAMS.length * 3,
-      detail: sheets + " of " + TEAMS.length * 3 + " sheets are marked complete (three experts for each of four tables)."},
+      detail: sheets + " of " + TEAMS.length * 3 + " sheets are marked complete (three experts for each of four teams)."},
     {id: "ranking", title: "Ranking and export", done: ranked,
       detail: ranked ? "The ranking is ready: check it and export the scores." : "Ready when the two steps above are done."}
   ];
   const current = steps.findIndex(step => !step.done);
   const next = {
-    joined: "Ask every team to open the page and join with the room code and its table number.",
     game: phase.id === "SETUP" ? "Wait for R1. Explain the mandate and run the practice example." : "Run the seminar. The teams’ data is saved in Google Sheets as they play.",
     files: "Teams finish R7 and their decisions and notes appear here from Google Sheets. Press Refresh now if you do not want to wait.",
-    sheets: "The three experts complete their score sheets for every table.",
+    sheets: "The three experts complete their score sheets for every team.",
     ranking: "Check the ranking and export the CSV."
   }[steps[current]?.id] ?? "Everything is done. Keep the team journals and the exported scores.";
   return {phase, steps: steps.map((step, index) => ({...step, state: step.done ? "done" : index === current ? "now" : "later"})), next};

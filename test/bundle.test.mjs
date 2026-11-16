@@ -78,7 +78,6 @@ test("The generated page runs a full practice game in a browser without console 
     page.on("console", message => { if (["error", "warning"].includes(message.type())) problems.push(message.text()); });
     page.on("pageerror", error => problems.push(error.message));
     await page.goto("file://" + file(OUTPUT_HTML));
-    await page.click("text=Practice without a room");
     await page.click('button:has-text("Open practice dashboard")');
     for (let round = 0; round < 7; round++) {
       if (/emergency/i.test(await page.locator("#omf-stage-title").innerText())) await page.click('button:has-text("Reveal bulletin B")');
@@ -91,8 +90,7 @@ test("The generated page runs a full practice game in a browser without console 
     assert.equal(await page.locator("#omf-stage-title").innerText(), "Board Brief");
     await page.click("button[data-action=home]");
     await page.click("button[data-action=host]");
-    await page.click('button:has-text("Create a new room")');
-    assert.match(await page.locator(".pv-record h3").first().innerText(), /^OMF-/);
+    assert.match(await page.locator("[data-host-connection-text]").innerText(), /no Google Sheets address/, "without a sheet the facilitator panel says what is missing");
     assert.deepEqual(problems, []);
   } finally {
     await browser.close();

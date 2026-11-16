@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { createServer } from '../scripts/serve.mjs';
+import { hostApi } from '../scripts/game-test-kit.mjs';
 
 let chromium = null;
 try { ({chromium} = createRequire(import.meta.url)("playwright")); } catch { /* optional */ }
@@ -24,7 +26,6 @@ async function withPage(run) {
 }
 
 async function openPractice(page, market = "indonesia") {
-  await page.click("text=Practice without a room");
   await page.selectOption("select[data-entry=market]", market);
   await page.click('button:has-text("Open practice dashboard")');
 }
@@ -122,16 +123,27 @@ test("Correcting one channel asks which problem; naming the right one proves it,
   });
 });
 
-test("A live room shows the stage timer in the bar and asks before an early lock", {skip}, async () => {
-  await withPage(async page => {
-    const moscow = new Date(Date.now() - 5 * 60_000 + 3 * 3_600_000).toISOString().slice(0, 16);
-    await page.click("button[data-action=host]");
-    await page.fill('[data-host="start"]', moscow);
-    await page.click('button:has-text("Create a new room")');
-    const room = await page.locator(".pv-record h3").first().innerText();
-    await page.click("button[data-action=home]");
-    await page.fill('input[data-entry="room"]', room);
-    await page.click('button:has-text("Open team dashboard")');
+test("A live game shows the stage timer in the bar and asks before an early lock", {skip}, async () => {
+  const server = createServer({fakeSheets: {password: "a long test password"}});
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const base = "http://127.0.0.1:" + server.address().port + "/";
+  const api = hostApi(base, "a long test password");
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({viewport: {width: 1280, height: 700}});
+    const problems = [];
+    page.on("console", message => { if (["error", "warning"].includes(message.type()) && !/net::ERR_FAILED/.test(message.text())) problems.push(message.text()); });
+    page.on("pageerror", error => problems.push(error.message));
+    await page.goto(base);
+    await page.fill('input[name=name]', "Anna K");
+    await page.check('input[name=international][value=no]');
+    await page.click('form[data-form=signup] button[type=submit]');
+    await page.locator(".pv-entry-panel .pv-record").waitFor();
+    await api.demo(7);
+    await api.form();
+    await api.captain(server.backend.table("Players").find(row => row.name === "Anna K").id);
+    await api.start(5);
+    await page.locator(".pv-sticky").waitFor({timeout: 20_000});
 
     const clock = page.locator(".pv-sticky [data-clock]");
     await clock.waitFor({state: "visible"});
@@ -155,7 +167,11 @@ test("A live room shows the stage timer in the bar and asks before an early lock
     await page.locator('dialog[open] button:has-text("Lock decision")').click();
     await journal.first().waitFor();
     assert.equal(await journal.count(), 1);
-  });
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+    await new Promise(resolve => server.close(resolve));
+  }
 });
 
 test("Choosing another market for a practice table that already has a game asks before replacing it", {skip}, async () => {
@@ -165,15 +181,14 @@ test("Choosing another market for a practice table that already has a game asks 
     await page.click("button[data-action=home]");
 
     // Back on the entry screen with another market for the same table: the game asks instead of failing.
-    await page.click("text=Practice without a room");
     await page.selectOption("select[data-entry=market]", "vietnam");
     await page.click('button:has-text("Open practice dashboard")');
     const dialog = page.locator("dialog[open]");
     await dialog.waitFor();
-    assert.match(await dialog.innerText(), /Table 1 already has a saved practice game for Indonesia \(1 of 7 decisions\)\. Replace it with a new game for Vietnam\?/);
+    assert.match(await dialog.innerText(), /Team 1 already has a saved practice game for Indonesia \(1 of 7 decisions\)\. Replace it with a new game for Vietnam\?/);
 
     await dialog.locator('button[value="cancel"]').click();
-    assert.match(await page.locator("#omf-entry-title").innerText(), /Practice without a room/);
+    assert.match(await page.locator("#omf-entry-title").innerText(), /^Practice$/);
 
     await page.click('button:has-text("Open practice dashboard")');
     await page.locator('dialog[open] button:has-text("Replace it")').click();

@@ -2,46 +2,44 @@ import { MARKETS, BULLETINS, RUBRIC, QUESTION } from './scenario.mjs';
 import { TEAMS, SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, standings, compareScores, hostChecklist } from './rules.mjs';
 import { tuning } from './tuning.mjs';
 import { hostKey, getStored, putStored } from './storage.mjs';
-import { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, scoresCsv } from './presentation.mjs';
+import { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, scoresCsv, scoresSheetTable } from './presentation.mjs';
 import { trueNow } from './clock.mjs';
-import { syncEnabled, fetchRoom, publishRoom, recordFromPayload } from './sync.mjs';
+import { syncEnabled, fetchRoom, fetchRoster, hostCommand, pushScores, recordFromPayload } from './sync.mjs';
 
-const activeKey = hostKey("active");
-const moscowDate = new Intl.DateTimeFormat("sv-SE", {timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit"});
 function freshPanel() {
-  return {grades: {}, joined: false};
+  return {grades: {}};
 }
 
 // `records` are the teams' games rebuilt from the sheet; they are read again, never stored here.
-const host = {room: "", start: "", selected: 1, panel: freshPanel(), records: {}, token: getStored(hostKey("token")) || "",
+// In the hosted game the sheet also holds the players, the state of the game and the room code (an internal detail).
+const host = {room: "", selected: 1, panel: freshPanel(), records: {}, token: getStored(hostKey("token")) || "",
+  state: "", players: [], delay: 2, scoresSent: {at: 0, error: ""},
   refresh: {at: 0, error: "", loading: false, problems: {}}};
-try {
-  const room = getStored(activeKey);
-  if (roomStart(room) !== null) {
-    host.room = room;
+
+function loadPanel(room) {
+  try {
     const panel = JSON.parse(getStored(hostKey(room)));
-    if (panel) host.panel = {grades: panel.grades && typeof panel.grades === "object" ? panel.grades : {}, joined: !!panel.joined};
+    host.panel = panel && typeof panel.grades === "object" ? {grades: panel.grades} : freshPanel();
+  } catch {
+    host.panel = freshPanel();
   }
-} catch {
-  host.panel = freshPanel();
 }
 
 function storePanel() {
-  putStored(activeKey, host.room);
   putStored(hostKey(host.room), JSON.stringify(host.panel));
 }
 
 function connectionText() {
   const {at, error, loading} = host.refresh;
   if (!syncEnabled()) return "This page has no Google Sheets address (data-sync-url), so team data cannot be loaded.";
-  if (!host.token) return "Enter the facilitator password to load the teams and to open a room.";
+  if (!host.token) return "Enter the facilitator password to see the players and run the game.";
   if (error) return "Could not read Google Sheets: " + error;
-  if (loading && !at) return "Loading the teams from Google Sheets…";
-  if (!host.room) return "Connected. Open a room below.";
+  if (loading && !at) return "Loading from Google Sheets…";
   const time = at ? new Date(at).toLocaleTimeString("en-GB", {timeZone: "Europe/Moscow"}) : "";
+  if (!host.room) return (at ? "Updated " + time + " Moscow time · " : "") + "Connected.";
   const withData = TEAMS.filter(team => host.records[team]).length;
-  const problems = Object.entries(host.refresh.problems).map(([team, message]) => " Table " + team + " could not be read (" + message + ").").join("");
-  return (at ? "Updated " + time + " Moscow time · " : "") + withData + " of " + TEAMS.length + " tables have data." + problems;
+  const problems = Object.entries(host.refresh.problems).map(([team, message]) => " Team " + team + " could not be read (" + message + ").").join("");
+  return (at ? "Updated " + time + " Moscow time · " : "") + withData + " of " + TEAMS.length + " teams have data." + problems;
 }
 
 function connectionHtml() {
@@ -51,32 +49,48 @@ function connectionHtml() {
     <div class="pv-actions pv-file-actions">${button("Refresh now", "host-refresh")}</div></div>`;
 }
 
-function startForm() {
-  const today = moscowDate.format(new Date());
-  const planned = Date.parse(today + "T18:30+03:00");
-  const date = moscowDate.format(new Date(planned > trueNow() ? planned : planned + 86_400_000));
-  const time = host.start || (host.room ? moscowDate.format(roomStart(host.room)) + "T" + interval(host.room, 0, 1).slice(0, 5) : date + "T18:30");
-  return `<div class="pv-panel">
-    <label class="pv-field">R1 start · Moscow time
-      <input class="pv-input" type="datetime-local" data-host="start" value="${esc(time)}">
-    </label><p class="pv-inline-note pv-block-gap">The opening starts 20 minutes before R1. A room sets the timetable and draws four unique markets.</p>
-    <div class="pv-actions pv-file-actions">${button("Create a new room", "host-create", "primary")}</div>
-  </div>`;
+// ---- The players: join, form teams, start -----------------------------------------------------------
+
+function playersSummary() {
+  const players = host.players;
+  const international = players.filter(player => player.international).length;
+  const ready = players.filter(player => player.ready).length;
+  if (!host.state) return "Waiting for the first answer from Google Sheets.";
+  if (host.state === "lobby") return players.length ? players.length + " players joined (" + international + " international). Form the teams when everyone is in." :
+    "No players yet. Players open the game page, press “Join your team” and enter their name. They never see the sheet.";
+  if (host.state === "formed") return "Teams are formed. " + ready + " of " + players.length + " players are ready. You can shuffle again until you start.";
+  return "The game is running. " + players.length + " players in four teams.";
+}
+
+function teamCards() {
+  return TEAMS.map(team => {
+    const members = host.players.filter(player => player.team === team);
+    const market = host.room ? MARKETS[marketForTable(host.room, team)] : null;
+    return `<div class="pv-panel"><span class="pv-mono">Team ${team}</span><strong>${market ? esc(market.name) : "Market is drawn at the start"}</strong>
+      <small>${members.length} ${members.length === 1 ? "player" : "players"}</small>
+      <ul class="pv-team-list">${members.map(player => "<li>" + esc(player.name) + (player.international ? " · intl" : "") + (player.captain ? " · captain" : "") + (player.ready ? " ✔" : "") + "</li>").join("")}</ul></div>`;
+  }).join("");
+}
+
+function playersHtml() {
+  const {state, players} = host;
+  const delays = [0, 2, 5, 10].map(minutes => '<option value="' + minutes + '"' + (host.delay === minutes ? " selected" : "") + ">" + (minutes ? "in " + minutes + " minutes" : "right now") + "</option>").join("");
+  const lobby = state === "lobby" ? (players.length ? '<ul class="pv-team-list">' + players.map(player => "<li>" + esc(player.name) + (player.international ? " · international" : "") + "</li>").join("") + "</ul>" : "") : "";
+  const actions = state === "started" ? button("Start a new game", "host-reset", "text") :
+    [button(state === "formed" ? "Shuffle the teams again" : "Form teams", "host-form", state === "formed" ? "" : "primary"),
+      state === "formed" ? `<label class="pv-field pv-inline-field">R1 opens<select class="pv-input" data-host="delay">${delays}</select></label>` + button("Start the game", "host-start", "primary") : "",
+      button("Add demo players (test)", "host-demo", "text"), button("Start a new game", "host-reset", "text")].join("");
+  return `<div class="pv-panel pv-block-gap" data-host-players><h3>Players and teams</h3>
+    <p class="pv-inline-note" data-host-players-text>${esc(playersSummary())}</p>${lobby}
+    ${state === "formed" || state === "started" ? '<div class="pv-host-assignments pv-block-gap">' + teamCards() + "</div>" : ""}
+    <div class="pv-actions pv-file-actions">${state ? actions : ""}</div></div>`;
 }
 
 function activeRoom() {
-  const assignments = TEAMS.map(team => {
-    const market = MARKETS[marketForTable(host.room, team)];
-    return "<div class=\"pv-panel\"><span class=\"pv-mono\">Table " + team + "</span><strong>" + esc(market.name) +
-      "</strong><small>" + esc(market.city) + "</small></div>";
-  }).join("");
-  return `<div class="pv-record pv-checkpoint"><p class="pv-mono">Room code</p><h3>${esc(host.room)}</h3>
-    <p>Show this code and the table assignment. Each team joins with one device and its own table number.</p></div>
-    <div class="pv-host-assignments">${assignments}</div>
-    <div class="pv-panel pv-block-gap">
-      <div class="pv-clock" data-host-clock><span data-host-phase></span><strong data-host-time></strong></div>
-      <p data-host-cue class="pv-block-gap"></p>
-    </div>`;
+  return `<div class="pv-panel pv-block-gap">
+    <div class="pv-clock" data-host-clock><span data-host-phase></span><strong data-host-time></strong></div>
+    <p data-host-cue class="pv-block-gap"></p>
+  </div>`;
 }
 
 let checklistPhase = null;
@@ -90,17 +104,17 @@ function progressText(phase, now) {
 }
 
 function checklistHtml(now) {
-  const {phase, steps, next} = hostChecklist({room: host.room, now, grades: host.panel.grades, records: host.records, joined: host.panel.joined});
+  const {phase, steps, next} = hostChecklist({room: host.room, now, grades: host.panel.grades, records: host.records});
   checklistPhase = phase.id;
   const marks = {done: "✔", now: "●", later: "○"};
   const extras = {
-    joined: '<label class="pv-check-line"><input type="checkbox" data-host="joined"' + (host.panel.joined ? " checked" : "") + "> All four tables are in</label>",
     game: '<p class="pv-inline-note" data-host-progress>' + esc(progressText(phase, now)) + "</p>",
     files: button("Refresh now", "host-refresh"),
+    sheets: button("Send scores to Google Sheets", "host-scores-sync"),
     ranking: button("Export scores CSV", "host-scores")
   };
   const items = steps.map((step, index) => `<li data-state="${step.state}"><span class="pv-step-mark" aria-hidden="true">${marks[step.state]}</span>
-    <div><strong>${index + 1}. ${esc(step.title)}</strong>${step.state === "now" ? ' <span class="pv-mono">now</span>' : ""}<p>${esc(step.detail)}</p>${step.state === "done" && !["game", "joined"].includes(step.id) ? "" : extras[step.id] ?? ""}</div></li>`).join("");
+    <div><strong>${index + 1}. ${esc(step.title)}</strong>${step.state === "now" ? ' <span class="pv-mono">now</span>' : ""}<p>${esc(step.detail)}</p>${step.state === "done" && !["game", "sheets"].includes(step.id) ? "" : extras[step.id] ?? ""}</div></li>`).join("");
   return `<div class="pv-panel pv-checklist" data-host-checklist><h3>What’s next</h3>
     <p class="pv-next"><strong>${esc(next)}</strong></p><ol class="pv-steps">${items}</ol></div>`;
 }
@@ -117,9 +131,9 @@ function scoresTable() {
   const ranked = rows.filter(row => row.key).sort((a, b) => compareScores(a.key, b.key));
   const tied = complete ? ranked.filter(row => compareScores(row.key, ranked[0].key) === 0) : [];
   const heading = !complete ? (counted ? "Complete all three expert sheets and wait for every team’s data from Google Sheets to rank the proposals." :
-      "Complete all three expert sheets for every table to rank the proposals.") :
-    tied.length > 1 ? "The Chair decides between tables " + tied.map(row => row.team).join(", ") + " and gives a rubric-based reason." :
-      "First launch priority · Table " + ranked[0].team + " · " + MARKETS[marketForTable(host.room, ranked[0].team)].name;
+      "Complete all three expert sheets for every team to rank the proposals.") :
+    tied.length > 1 ? "The Chair decides between teams " + tied.map(row => row.team).join(", ") + " and gives a rubric-based reason." :
+      "First launch priority · Team " + ranked[0].team + " · " + MARKETS[marketForTable(host.room, ranked[0].team)].name;
   const number = value => (value === null || value === undefined ? "Pending" : value.toFixed(1));
   const body = (complete ? ranked : rows).map(row => "<tr><td>" + esc(MARKETS[marketForTable(host.room, row.team)].name) + "</td>" +
     [row.jury?.written, row.jury?.oral].map(value => "<td>" + number(value) + "</td>").join("") +
@@ -129,7 +143,15 @@ function scoresTable() {
     ${counted ? '<p class="pv-inline-note">Final = ' + Math.round((1 - tuning().gameShare) * 100) + "% experts + " + Math.round(tuning().gameShare * 100) + "% game result. The game result comes from the team data in Google Sheets.</p>" : ""}
     <table class="pv-scores"><thead><tr><th scope="col">Market</th><th scope="col">Written</th><th scope="col">Oral</th>${counted ? '<th scope="col">Game</th><th scope="col">Final</th>' : '<th scope="col">Total</th>'}</tr></thead>
     <tbody>${body}</tbody></table>
-    <div class="pv-actions pv-file-actions">${button("Export scores CSV", "host-scores")}${button("Export for Excel", "host-scores-ru")}</div></div>`;
+    <div class="pv-actions pv-file-actions">${button("Send scores to Google Sheets", "host-scores-sync", "primary")}${button("Export scores CSV", "host-scores")}${button("Export for Excel", "host-scores-ru")}</div>
+    <p class="pv-inline-note" data-host-scores-sent>${esc(scoresSentText())}</p></div>`;
+}
+
+function scoresSentText() {
+  const {at, error} = host.scoresSent;
+  if (error) return "The scores could not be sent: " + error;
+  return at ? "Scores sheet updated at " + new Date(at).toLocaleTimeString("en-GB", {timeZone: "Europe/Moscow"}) + " Moscow time. It updates by itself after each change." :
+    "The Scores sheet fills by itself once you mark an expert sheet. You can also press the button.";
 }
 
 function journalHtml(team) {
@@ -150,12 +172,12 @@ function judgeTable(team) {
       '<label class="pv-panel pv-field"><span><input type="checkbox" data-host="complete" data-expert="' + expert + '"' +
       (grade.complete ? " checked" : "") + '> This expert sheet is complete</span></label>');
   }).join("");
-  const teamOptions = TEAMS.map(value => '<option value="' + value + '"' + (team === value ? " selected" : "") + ">Table " + value +
+  const teamOptions = TEAMS.map(value => '<option value="' + value + '"' + (team === value ? " selected" : "") + ">Team " + value +
     " · " + esc(MARKETS[marketForTable(host.room, value)].name) + "</option>").join("");
   return `<div class="pv-panel">
     <h3>Strategy and hearing score sheets</h3>
     <p>Team data arrives from Google Sheets on its own. Review written checks during the game and preparation. Score the pitch and common answer separately. Three experts submit their four independent checks for each criterion.</p>
-    <label class="pv-field pv-block-gap">Review table<select class="pv-input" data-host="selected">${teamOptions}</select></label>
+    <label class="pv-field pv-block-gap">Review team<select class="pv-input" data-host="selected">${teamOptions}</select></label>
     <div data-host-journal>${journalHtml(team)}</div>
     ${sheets}
   </div>`;
@@ -166,8 +188,8 @@ function guide(room) {
     ["<li><strong>", esc(interval(room, item.from, item.to)), "</strong><span>", esc(item.label), "</span></li>"].join("")).join("");
   return disclosure("Facilitator script and timetable", `
     <div class="pv-wording">
-      <h3>20 minutes before R1</h3>
-      <p>Make four mixed tables. If the roster includes exchange students, privately distribute them as evenly as possible. Keep the tables balanced and run the case in English. Give the group its table number and read the Board brief without assigning student positions.</p>
+      <h3>Before R1</h3>
+      <p>Ask everyone to open the game page, press “Join your team” and enter their name. When all are in, press “Form teams”: the randomizer keeps four teams balanced and spreads the international students evenly. Press “Shuffle the teams again” for a new draw. Players see their team number and press “I’m ready”; you press “Start the game”. Each team plays on one device, the captain’s. Run the case in English and read the Board brief without assigning student positions.</p>
       <p>Explain credits with a sample. With 5 practice credits, buying an interview for 2 leaves 3, so a response costing 4 is unavailable. Every real team starts with 9.</p>
       <p>Explain the deadline. A complete, affordable browser draft locks when time runs out. The free default is applied if any required draft field is missing. Keep printed round cards and one blank ledger per team for an offline fallback.</p>
       ${facts([["Expert 1","Open the session, project the clock, warn with two minutes left and time each pitch."],
@@ -182,9 +204,8 @@ function guide(room) {
 }
 
 export function renderHost(now = trueNow()) {
-  return stage("Facilitator dashboard", "Seminar operations",
-    connectionHtml() + (host.room ? activeRoom() + checklistHtml(now) + guide(host.room) + '<div class="pv-block-gap">' + scoresTable() + judgeTable(host.selected) + "</div>" : "") +
-    '<div class="pv-block-gap">' + (host.room ? disclosure("Set up another room", startForm()) : startForm()) + "</div>", "review");
+  const played = host.room ? activeRoom() + checklistHtml(now) + guide(host.room) + '<div class="pv-block-gap">' + scoresTable() + judgeTable(host.selected) + "</div>" : "";
+  return stage("Facilitator dashboard", "Seminar operations", connectionHtml() + playersHtml() + played, "review");
 }
 
 export function hostClock(root, now) {
@@ -203,7 +224,7 @@ export function hostClock(root, now) {
     R7: "Each team chooses what to fund and states the condition for its next commitment.",
     BREAK: "Nothing to export: the data is in Google Sheets. Teams can reopen the page after the break.",
     R6: bulletin ? BULLETINS.A : BULLETINS.B + " Each team sees its customer-specific note.",
-    PREP: "Read the Board Briefs in the Brief sheet, finish the written checks and give teams the pitch order.",
+    PREP: "Read the Board Briefs at the bottom of each Team sheet, finish the written checks and give teams the pitch order.",
     PITCH: "One four-minute slot per team. " + QUESTION,
     DEBRIEF: "Reconcile all scores. Announce the selected next investment and its live-launch condition.",
     END: "Session complete. Export the ranking and keep the team journals."
@@ -227,56 +248,103 @@ function exportScores(russianExcel = false) {
     scoresCsv(host.room, host.panel.grades, {russianExcel, records: host.records}), "text/csv;charset=utf-8");
 }
 
-export async function handleHostAction(id, target, ui) {
-  if (id === "host-create") {
-    const start = target.closest(".pv-panel").querySelector('[data-host="start"]').value;
-    const instant = Date.parse(start + "+03:00");
-    if (!start || !Number.isFinite(instant)) throw new Error("Set a valid R1 start in Moscow time.");
-    const random = crypto.getRandomValues(new Uint32Array(2));
-    const next = makeRoom(instant, random[0] % 24, (random[1] % 46656).toString(36).padStart(3, "0"));
-    if (roomStart(next) === null) throw new Error("Select a date between 2025 and 2099.");
-    if (host.room && !await ui.ask("Switch to a new room?", "The teams will join the new room. The data of the current room stays in the sheet.", "Create room")) return;
-    // With a sheet, the room is published there so that teams only pick their table.
-    if (syncEnabled()) {
-      if (!host.token) throw new Error("Enter the facilitator password first.");
-      await publishRoom(next, instant, host.token);
-    }
-    host.room = next;
+function requireToken() {
+  if (!host.token) throw new Error("Enter the facilitator password first.");
+}
+
+// A new internal game number: it carries the R1 start and which team gets which market. Nobody types it.
+function newGameNumber(startAt) {
+  const random = crypto.getRandomValues(new Uint32Array(2));
+  return makeRoom(startAt, random[0] % 24, (random[1] % 46656).toString(36).padStart(3, "0"));
+}
+
+async function sendScores() {
+  if (!host.token || !host.room) return;
+  try {
+    await pushScores(host.token, scoresSheetTable(host.room, host.panel.grades, host.records));
+    host.scoresSent = {at: trueNow(), error: ""};
+  } catch (error) {
+    host.scoresSent = {...host.scoresSent, error: error.message || "no answer"};
+  }
+  const note = document.querySelector("#one-market-first [data-host-scores-sent]");
+  if (note) note.textContent = scoresSentText();
+}
+
+let scoresTimer = null;
+function scheduleScores() {
+  if (!host.token || !host.room) return;
+  clearTimeout(scoresTimer);
+  scoresTimer = setTimeout(() => void sendScores(), 4000);
+}
+
+function applyRoster(roster) {
+  host.state = roster.state;
+  host.players = roster.players;
+  if (roster.room !== host.room) {
+    host.room = roster.state === "started" && roomStart(roster.room) !== null ? roster.room : "";
     host.records = {};
-    host.start = start;
     host.selected = 1;
-    host.panel = freshPanel();
-    storePanel();
-    ui.announce("Room created. Show the room code and table numbers to participants.");
-    ui.render("#omf-stage-title");
-    void refreshHostData(ui);
-  } else if (id === "host-refresh") await refreshHostData(ui);
+    if (host.room) loadPanel(host.room);
+    else host.panel = freshPanel();
+  }
+}
+
+export async function handleHostAction(id, target, ui) {
+  if (id === "host-refresh") await refreshHostData(ui);
   else if (id === "host-scores") exportScores();
   else if (id === "host-scores-ru") exportScores(true);
+  else if (id === "host-scores-sync") {
+    requireToken();
+    await sendScores();
+    if (host.scoresSent.error) throw new Error(host.scoresSent.error);
+    ui.announce("The Scores sheet is updated.");
+  } else if (id === "host-demo") {
+    requireToken();
+    applyRoster(await hostCommand("demo", host.token, {count: 8}));
+    ui.announce("Added 8 demo players. They are not real: use “Start a new game” to remove them.");
+    ui.render("#omf-stage-title");
+  } else if (id === "host-form") {
+    requireToken();
+    if (host.state === "formed" && !await ui.ask("Shuffle the teams again?", "The players’ teams change and they have to press “I’m ready” again.", "Shuffle")) return;
+    applyRoster(await hostCommand("form", host.token));
+    ui.announce("Teams formed. The players see their team number on their screens.");
+    ui.render("#omf-stage-title");
+  } else if (id === "host-start") {
+    requireToken();
+    const waiting = host.players.filter(player => !player.ready).length;
+    if (waiting && !await ui.ask("Start the game?", waiting + " of " + host.players.length + " players have not pressed “I’m ready”. Start anyway?", "Start the game")) return;
+    const startAt = (host.delay ? Math.ceil((trueNow() + host.delay * 60_000) / 60_000) : Math.floor(trueNow() / 60_000)) * 60_000;
+    const next = newGameNumber(startAt);
+    if (roomStart(next) === null) throw new Error("The clock is outside 2025–2099.");
+    applyRoster(await hostCommand("start", host.token, {room: next, start: new Date(startAt).toISOString(), markets: TEAMS.map(team => marketForTable(next, team))}));
+    ui.announce("The game starts. Players’ screens open by themselves.");
+    ui.render("#omf-stage-title");
+    void refreshHostData(ui);
+  } else if (id === "host-reset") {
+    requireToken();
+    if (!await ui.ask("Start a new game?", "A copy of the spreadsheet is saved in your Drive. Then all players, teams and results are removed and the players have to join again.", "Start a new game")) return;
+    applyRoster(await hostCommand("reset", host.token));
+    ui.announce("A new game is ready. A copy of the previous one was saved.");
+    ui.render("#omf-stage-title");
+  }
 }
 
 export function updateHostField(input, render) {
   const {host: field} = input.dataset;
-  if (field === "start") {
-    host.start = input.value;
+  if (field === "delay") {
+    host.delay = Number(input.value) || 0;
     return;
   }
   if (field === "token") {
     host.token = input.value.trim();
     putStored(hostKey("token"), host.token);
-    if (render) void refreshHostData({});
+    if (render) void refreshHostData({render});
     return;
   }
   if (!host.room || !render) return;
   if (field === "selected") {
     host.selected = Number(input.value);
     render();
-    return;
-  }
-  if (field === "joined") {
-    host.panel.joined = input.checked;
-    storePanel();
-    refreshChecklist();
     return;
   }
   if (field !== "check" && field !== "complete") return;
@@ -298,17 +366,21 @@ export function updateHostField(input, render) {
   const previous = input.closest(".pv-stage-body").querySelector(".pv-scores").closest(".pv-panel");
   previous.outerHTML = scoresTable();
   refreshChecklist();
-}
-
-function replaceIn(selector, html) {
-  const element = document.querySelector("#one-market-first " + selector);
-  if (element) element.outerHTML = html;
+  scheduleScores();
 }
 
 // What changed in the sheet shows without redrawing the page (the experts' open sheets stay open).
 function refreshHostViews() {
   const text = document.querySelector("#one-market-first [data-host-connection-text]");
   if (text) text.textContent = connectionText();
+  const players = document.querySelector("#one-market-first [data-host-players]");
+  if (players) {
+    const next = document.createElement("div");
+    next.innerHTML = playersHtml();
+    const fresh = next.firstElementChild;
+    // The page is redrawn only when the roster changed, so an open drop-down is not closed under the facilitator's hand.
+    if (fresh.innerHTML !== players.innerHTML) players.replaceWith(fresh);
+  }
   if (!host.room) return;
   refreshChecklist();
   const ranking = document.querySelector("#one-market-first .pv-scores");
@@ -317,26 +389,32 @@ function refreshHostViews() {
   if (journal) journal.innerHTML = journalHtml(host.selected);
 }
 
-// Reads every team of the open room from the sheet.
-export async function refreshHostData() {
-  if (!syncEnabled() || !host.room || !host.token || host.refresh.loading) {
+// Reads the players and, once the game runs, every team from the sheet.
+export async function refreshHostData(ui = {}) {
+  if (!syncEnabled() || !host.token || host.refresh.loading) {
     refreshHostViews();
     return;
   }
   host.refresh.loading = true;
   const problems = {};
+  const before = host.room;
   try {
-    const data = await fetchRoom(host.room, host.token);
-    const records = {};
-    for (const payload of data.teams) {
-      if (!(payload.decisions.length || payload.notes.length || payload.brief)) continue;
-      try { records[payload.team] = recordFromPayload(payload, marketForTable(host.room, payload.team)); }
-      catch (error) { problems[payload.team] = error.message; }
+    applyRoster(await fetchRoster(host.token));
+    if (host.room) {
+      const data = await fetchRoom(host.token);
+      const records = {};
+      for (const payload of data.teams) {
+        if (!(payload.decisions.length || payload.notes.length || payload.brief)) continue;
+        try { records[payload.team] = recordFromPayload(payload, marketForTable(host.room, payload.team)); }
+        catch (error) { problems[payload.team] = error.message; }
+      }
+      host.records = records;
     }
-    host.records = records;
     host.refresh = {at: trueNow(), error: "", loading: false, problems};
   } catch (error) {
     host.refresh = {...host.refresh, error: error.message || "no answer", loading: false, problems};
   }
-  refreshHostViews();
+  // The page gains its clock, checklist and score sheets (or loses them) when a game starts or a new one is prepared.
+  if (host.room !== before && ui.render) ui.render();
+  else refreshHostViews();
 }

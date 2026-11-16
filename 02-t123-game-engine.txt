@@ -550,7 +550,7 @@ function standings(grades, records = {}) {
 // The facilitator's "what's next" list. Only the facilitator's own browser knows these facts: the room,
 // the clock, the team data read from the sheet and the expert sheets. Whether the teams have joined cannot be seen,
 // so that step is ticked by hand.
-function hostChecklist({room, now, grades, records, joined}) {
+function hostChecklist({room, now, grades, records}) {
   const phase = phaseAt(room, now);
   const counted = tuning().gameShare > 0;
   const full = TEAMS.filter(team => records?.[team]?.history?.length === ROUNDS.length);
@@ -559,29 +559,24 @@ function hostChecklist({room, now, grades, records, joined}) {
   const sheets = TEAMS.reduce((sum, team) => sum + [0, 1, 2].filter(expert => grades?.[team]?.[expert]?.complete).length, 0);
   const ranked = standings(grades, records).every(row => row.key);
   const finished = ["PREP", "PITCH", "DEBRIEF", "END"].includes(phase.id);
-  const list = (tables) => tables.map(team => "table " + team).join(", ");
+  const list = (teams) => teams.map(team => "team " + team).join(", ");
   const steps = [
-    {id: "room", title: "Room created", done: true,
-      detail: "Show the room code and the table assignment to the students."},
-    // Team data in the sheet, or a finished game, proves that the tables were in.
-    {id: "joined", title: "Every table has joined", done: !!joined || finished || TEAMS.some(team => records?.[team]),
-      detail: "Each team opens the page and enters the room code with its table number. This page cannot see the teams, so tick the box once you have checked."},
+    {id: "started", title: "Game started", done: true, detail: "The teams were formed and the game began. Each team plays on its captain’s device."},
     {id: "game", title: "The game is played", done: finished,
       detail: finished ? "All seven rounds are over." : phase.id === "SETUP" ? "R1 has not started yet." : "The rounds are running."},
     {id: "files", title: "Team data from Google Sheets", done: counted ? full.length === TEAMS.length : true,
-      detail: (counted ? "" : "Optional without a game result. ") + full.length + " of " + TEAMS.length + " tables have all " + ROUNDS.length + " decisions" +
+      detail: (counted ? "" : "Optional without a game result. ") + full.length + " of " + TEAMS.length + " teams have all " + ROUNDS.length + " decisions" +
         (missing.length ? ". Missing: " + list(missing) : "") + (partial.length ? ". Still playing: " + list(partial) : "") + "."},
     {id: "sheets", title: "Expert sheets complete", done: sheets === TEAMS.length * 3,
-      detail: sheets + " of " + TEAMS.length * 3 + " sheets are marked complete (three experts for each of four tables)."},
+      detail: sheets + " of " + TEAMS.length * 3 + " sheets are marked complete (three experts for each of four teams)."},
     {id: "ranking", title: "Ranking and export", done: ranked,
       detail: ranked ? "The ranking is ready: check it and export the scores." : "Ready when the two steps above are done."}
   ];
   const current = steps.findIndex(step => !step.done);
   const next = {
-    joined: "Ask every team to open the page and join with the room code and its table number.",
     game: phase.id === "SETUP" ? "Wait for R1. Explain the mandate and run the practice example." : "Run the seminar. The teams’ data is saved in Google Sheets as they play.",
     files: "Teams finish R7 and their decisions and notes appear here from Google Sheets. Press Refresh now if you do not want to wait.",
-    sheets: "The three experts complete their score sheets for every table.",
+    sheets: "The three experts complete their score sheets for every team.",
     ranking: "Check the ranking and export the CSV."
   }[steps[current]?.id] ?? "Everything is done. Keep the team journals and the exported scores.";
   return {phase, steps: steps.map((step, index) => ({...step, state: step.done ? "done" : index === current ? "now" : "later"})), next};
@@ -988,18 +983,18 @@ function writeSynced(room, team, endpoint, count) {
   writeSyncState(room, team, endpoint, {...state, count});
 }
 
-// The room the facilitator opened, remembered so that a reload without a connection still finds it.
-function readConfigCache() {
+// The player of this device: a secret pass the sheet recognizes, and the name shown to teammates.
+function readPlayer() {
   try {
-    const value = JSON.parse(getStored(prefix + ":config"));
-    return typeof value?.room === "string" ? value : null;
+    const value = JSON.parse(getStored(prefix + ":player"));
+    return typeof value?.id === "string" && value.id.length >= 16 && typeof value.name === "string" ? {id: value.id, name: value.name} : null;
   } catch {
     return null;
   }
 }
 
-function writeConfigCache(config) {
-  putStored(prefix + ":config", JSON.stringify({room: config.room, start: config.start}));
+function writePlayer(player) {
+  putStored(prefix + ":player", player ? JSON.stringify({id: player.id, name: player.name}) : null);
 }
 
 function activeTeam(value) {
@@ -1031,7 +1026,7 @@ function withSaveLock(key, change) {
 function knownTable(value) {
   return value && TEAMS.includes(value.team) && (value.room === "PRACTICE" || roomStart(value.room) !== null);
 }
-return { storageAvailable, getStored, putStored, teamKey, hostKey, SaveError, readSlot, storeRecord, clearSlot, mirrorPut, mirrorGet, mirrorStatus, recoveryOptions, requestPersistence, persistenceState, readSyncState, writeSyncState, readSynced, writeSynced, readConfigCache, writeConfigCache, activeTeam, newId, newRecord, withSaveLock, knownTable };
+return { storageAvailable, getStored, putStored, teamKey, hostKey, SaveError, readSlot, storeRecord, clearSlot, mirrorPut, mirrorGet, mirrorStatus, recoveryOptions, requestPersistence, persistenceState, readSyncState, writeSyncState, readSynced, writeSynced, readPlayer, writePlayer, activeTeam, newId, newRecord, withSaveLock, knownTable };
 })();
 
 // src/sync.mjs
@@ -1047,7 +1042,7 @@ const { readSyncState, writeSyncState, newRecord } = __omf_storage;
 // Events carry a deterministic id, so the sheet can drop duplicates and a re-send is always safe.
 
 const SEPARATOR = "␟";
-const state = {endpoint: "", status: "off", total: 0, pending: 0, pendingNotes: 0, error: ""};
+const state = {endpoint: "", status: "off", total: 0, pending: 0, pendingNotes: 0, error: "", participant: ""};
 let sending = null;
 
 function configureSync(url) {
@@ -1055,6 +1050,11 @@ function configureSync(url) {
   state.endpoint = /^(https:\/\/[^\s]+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/[^\s]*)$/.test(endpoint) ? endpoint : "";
   state.status = state.endpoint ? "idle" : "off";
   state.error = "";
+}
+
+// The player's secret pass: the sheet accepts a team's decisions and notes only from a player of that team.
+function setParticipant(id) {
+  state.participant = String(id || "");
 }
 
 function syncStatus() {
@@ -1106,7 +1106,7 @@ async function post(payload, request) {
   }
 }
 
-const envelope = () => ({v: 1, sentAt: new Date(trueNow()).toISOString(), clockOffsetMs: Math.round(clockStatus().offset)});
+const envelope = () => ({v: 1, participant: state.participant, sentAt: new Date(trueNow()).toISOString(), clockOffsetMs: Math.round(clockStatus().offset)});
 
 // Worksheet notes and the Board Brief that changed since they were last sent.
 function buildNotesPayload(record, sent) {
@@ -1211,9 +1211,10 @@ function syncSummary() {
   return text ? {state: status, text} : null;
 }
 
-// ---- Reading from the sheet ------------------------------------------------------------------------------
-// The sheet is the only store, so a page that has no local save asks it (a team continuing on another device),
-// the facilitator's page reads every team from it, and the room and start time come from its Settings.
+// ---- Talking to the sheet -------------------------------------------------------------------------------
+// The sheet is the only store. A player's page asks it which team the player is in and, once the game runs, for the
+// team's earlier game (continuing on another device). The facilitator's page forms the teams, starts the game and
+// reads every team. The room code is an internal detail: players never type it.
 
 function syncEnabled() {
   return !!state.endpoint;
@@ -1228,30 +1229,58 @@ async function read(query, request) {
   return reply;
 }
 
-// {room, start}: what the facilitator opened. Empty room means nothing is open yet.
-async function fetchConfig({request = globalThis.fetch} = {}) {
-  const reply = await read({action: "config"}, request);
-  return {room: reply.room || "", start: reply.start || ""};
-}
-
-async function fetchTeam(room, team, {request = globalThis.fetch} = {}) {
-  return read({action: "team", room, team}, request);
-}
-
-async function fetchRoom(room, token, {request = globalThis.fetch} = {}) {
-  return read({action: "room", room, token}, request);
-}
-
-// The facilitator opens a room: it is stored in the sheet's Settings for the teams to read.
-async function publishRoom(room, start, token, {request = globalThis.fetch} = {}) {
+async function command(body, request) {
   const response = await request(state.endpoint, {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, redirect: "follow",
-    body: JSON.stringify({v: 1, type: "room", token, room, start: new Date(start).toISOString()})});
+    body: JSON.stringify({v: 1, ...body})});
+  if (!response.ok) throw new Error("The sheet answered with status " + response.status + ".");
   const reply = await response.json();
-  if (!reply?.ok) throw new Error(reply?.error || "The sheet did not accept the room.");
+  if (!reply?.ok) throw new Error(reply?.error || "The sheet did not accept the request.");
   return reply;
 }
 
-// A table's saved game rebuilt from what the sheet holds. The record is checked like any other save.
+const withRequest = ({request = globalThis.fetch} = {}) => request;
+
+// Player: {found, state: lobby | formed | started, team, captain, ready, members, room, start}
+function joinGame(id, name, international, options) {
+  return command({type: "join", id, name, international}, withRequest(options));
+}
+
+function fetchMe(id, options) {
+  return read({action: "me", id}, withRequest(options));
+}
+
+function setReady(id, ready, options) {
+  return command({type: "ready", id, ready}, withRequest(options));
+}
+
+function claimCaptain(id, options) {
+  return command({type: "captain", id}, withRequest(options));
+}
+
+// The player's own team: its decisions and notes.
+function fetchTeam(id, options) {
+  return read({action: "team", id}, withRequest(options));
+}
+
+// Facilitator
+function fetchRoster(token, options) {
+  return read({action: "roster", token}, withRequest(options));
+}
+
+function fetchRoom(token, options) {
+  return read({action: "room", token}, withRequest(options));
+}
+
+// type: form | start | reset | demo
+function hostCommand(type, token, extra = {}, options) {
+  return command({type, token, ...extra}, withRequest(options));
+}
+
+function pushScores(token, table, options) {
+  return command({type: "scores", token, table}, withRequest(options));
+}
+
+// A team's saved game rebuilt from what the sheet holds. The record is checked like any other save.
 function recordFromPayload(payload, market) {
   const notes = {};
   for (const item of payload.notes || []) notes[item.round + "." + item.field] = item.text;
@@ -1262,10 +1291,167 @@ function recordFromPayload(payload, market) {
       evidence: item.evidence, tradeoff: item.tradeoff, ...(item.problem ? {problem: item.problem} : {})}))
   });
 }
-return { configureSync, syncStatus, buildEvents, buildNotesPayload, flushSync, syncSummary, syncEnabled, fetchConfig, fetchTeam, fetchRoom, publishRoom, recordFromPayload };
+return { configureSync, setParticipant, syncStatus, buildEvents, buildNotesPayload, flushSync, syncSummary, syncEnabled, joinGame, fetchMe, setReady, claimCaptain, fetchTeam, fetchRoster, fetchRoom, hostCommand, pushScores, recordFromPayload };
 })();
 
-window.__omfModules = Object.assign(window.__omfModules || {}, { rules: __omf_rules, progress: __omf_progress, clock: __omf_clock, storage: __omf_storage, sync: __omf_sync });
+// src/presentation.mjs
+const __omf_presentation = (() => {
+const { MARKETS, ROUNDS, WORKSHEET, CONFIG, QUESTION, RUBRIC } = __omf_scenario;
+const { OUTCOMES, TEAMS, replay, roomStart, marketForTable, scoreExpert, standings } = __omf_rules;
+const { tuning } = __omf_tuning;
+function esc(value) {
+  return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+function button(label, action, kind = "", attributes = "") {
+  return '<button type="button" class="pv-button' + (kind ? ' pv-button--' + kind : '') +
+    '" data-action="' + action + '" ' + attributes + '>' + esc(label) + '</button>';
+}
+
+function disclosure(label, body, open = false) {
+  return '<details class="pv-summary"' + (open ? " open" : "") + '><summary>' + esc(label) +
+    '</summary><div class="pv-detail-body">' + body + '</div></details>';
+}
+
+function facts(pairs, className = "pv-facts") {
+  return '<dl class="' + className + '">' + pairs.map(([label, value]) =>
+    '<div><dt>' + esc(label) + '</dt><dd>' + esc(value) + '</dd></div>').join("") + '</dl>';
+}
+
+function stage(title, label, body, tone = "") {
+  return '<section class="pv-stage" aria-labelledby="omf-stage-title"><header class="pv-stage-head' +
+    (tone ? ' pv-stage-head--' + tone : '') + '"><p class="pv-mono">' + esc(label) +
+    '</p><h2 id="omf-stage-title" tabindex="-1">' + esc(title) +
+    '</h2></header><div class="pv-stage-body">' + body + '</div></section>';
+}
+
+function saveFile(filename, data, mime) {
+  const url = URL.createObjectURL(new Blob([data], {type: mime}));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const moscowClock = new Intl.DateTimeFormat("en-GB", {timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit", hourCycle: "h23"});
+
+function interval(room, start, end) {
+  const base = roomStart(room);
+  return moscowClock.format(base + start * 60_000) + "–" + moscowClock.format(base + end * 60_000);
+}
+
+function countdown(delta) {
+  const seconds = Math.max(0, Math.ceil(delta / 1000));
+  const pad = value => String(value).padStart(2, "0");
+  const hours = Math.floor(seconds / 3600);
+  const rest = seconds % 3600;
+  const minutes = pad(Math.floor(rest / 60)) + ":" + pad(rest % 60);
+  return hours ? hours + ":" + minutes : minutes;
+}
+
+function textReport(record, boardOnly = false) {
+  const {state, path} = replay(record);
+  const market = MARKETS[record.market];
+  const profile = market.profiles[state.profile];
+  const lines = [
+    boardOnly ? "REVOLUT · BOARD BRIEF" : "REVOLUT · TEAM DECISION JOURNAL",
+    "Table " + record.team + " · " + market.name + " · " + record.room,
+    "Customer: " + (profile?.name || "Pending"),
+    "Credits spent: " + (CONFIG.budget - state.credits) + " · remaining: " + state.credits
+  ];
+  if (path.length === ROUNDS.length) lines.push("Funding request: " + OUTCOMES[path.at(-1).choice][0]);
+  if (record.brief) lines.push("", record.brief);
+  if (!boardOnly) {
+    for (const event of path) {
+      lines.push("", event.round + " " + event.label + " · cost " + event.cost + " · balance " + event.credits + " · " + event.method);
+      if (event.evidence) lines.push("Evidence: " + event.evidence);
+      if (event.tradeoff) lines.push("Trade-off: " + event.tradeoff);
+      if (event.result) lines.push("Result: " + event.result);
+      for (const [field, label] of WORKSHEET[event.round]) {
+        const value = record.notes[event.round + "." + field];
+        if (value) lines.push(label + ": " + value);
+      }
+    }
+  } else {
+    if (!record.brief) lines.push("", "Team worksheet highlights:");
+    const fields = [["R1.cage", "CAGE"], ["R3.later", "Next commitment"], ["R6.approval", "Reopening condition"], ["R7.board", "Board request"]];
+    for (const [key, label] of fields) {
+      if (!record.brief && record.notes[key]) lines.push(label + ": " + record.notes[key]);
+    }
+    lines.push("", "For the hearing: " + QUESTION);
+  }
+  return lines.join("\n");
+}
+
+function teamFilename(record, extension, name = "journal") {
+  return "revolut-" + record.room.toLowerCase() + "-table-" + record.team + "-" + record.market + "-" + name + "." + extension;
+}
+
+// RFC 4180: quote a cell that contains the separator, a quote or a line break, and double inner quotes.
+function csvCell(value, separator = ",") {
+  const text = String(value ?? "");
+  const quote = text.includes('"') || text.includes(separator) || /[\r\n]/.test(text) || text !== text.trim();
+  return quote ? '"' + text.replaceAll('"', '""') + '"' : text;
+}
+
+// The score table as CSV. `records` are the teams' games read from Google Sheets: the game result comes from them.
+// `russianExcel` writes ";" separators and decimal commas, which is what Excel with Russian regional
+// settings expects. A BOM makes Excel read the file as UTF-8.
+function scoresCsv(room, gradesByTeam, {russianExcel = false, records = {}} = {}) {
+  const separator = russianExcel ? ";" : ",";
+  const number = value => (russianExcel ? value.toFixed(1).replace(".", ",") : value.toFixed(1));
+  const counted = tuning().gameShare > 0;
+  const header = ["rank", "table", "market", "written_70", "oral_30", "uppsala_16"]
+    .concat(counted ? ["expert_total_100", "game_100", "final_100"] : ["total_100"], ["expert1_total", "expert2_total", "expert3_total", "status"]);
+  const lines = [header].concat(standings(gradesByTeam, records).map(row => {
+    const grades = Array.isArray(gradesByTeam?.[row.team]) ? gradesByTeam[row.team] : [];
+    const experts = [0, 1, 2].map(expert => grades[expert]?.complete ? number(scoreExpert(grades[expert]).total) : "");
+    const done = [0, 1, 2].filter(expert => grades[expert]?.complete).length;
+    const status = row.key ? (row.tied ? "tied: the Chair decides" : "complete") :
+      row.jury ? "pending: waiting for the team’s data in Google Sheets" : "pending: " + done + " of 3 expert sheets complete";
+    const jury = row.jury ? [row.jury.written, row.jury.oral, row.jury.uppsala].map(number) : ["", "", ""];
+    const totals = counted ? [row.jury ? number(row.jury.total) : "", row.game === null ? "" : number(row.game), row.final === null ? "" : number(row.final)] :
+      [row.jury ? number(row.jury.total) : ""];
+    return [row.rank ?? "", row.team, MARKETS[marketForTable(room, row.team)].name].concat(jury, totals, experts, [status]);
+  }));
+  return "\ufeff" + lines.map(line => line.map(cell => csvCell(cell, separator)).join(separator)).join("\r\n") + "\r\n";
+}
+
+// The same scores as a table for the Scores sheet in Google Sheets: the ranking of the teams, then every expert's points per
+// criterion. Numbers stay numbers so the facilitator can sort and add them there.
+function scoresSheetTable(room, gradesByTeam, records = {}) {
+  const round = value => Math.round(value * 10) / 10;
+  const counted = tuning().gameShare > 0;
+  const rows = standings(gradesByTeam, records);
+  const table = [["Rank", "Team", "Market", "Written (70)", "Oral (30)", "Uppsala (16)"].concat(counted ? ["Experts (100)", "Game (100)", "Final (100)"] : ["Total (100)"], ["Status"])];
+  for (const row of rows) {
+    const grades = Array.isArray(gradesByTeam?.[row.team]) ? gradesByTeam[row.team] : [];
+    const done = [0, 1, 2].filter(expert => grades[expert]?.complete).length;
+    const status = row.key ? (row.tied ? "tied: the Chair decides" : "complete") : row.jury ? "waiting for the team’s game result" : done + " of 3 expert sheets complete";
+    const jury = row.jury ? [row.jury.written, row.jury.oral, row.jury.uppsala].map(round) : ["", "", ""];
+    const totals = counted ? [row.jury ? round(row.jury.total) : "", row.game === null ? "" : round(row.game), row.final === null ? "" : round(row.final)] : [row.jury ? round(row.jury.total) : ""];
+    table.push([row.rank ?? "", row.team, MARKETS[marketForTable(room, row.team)].name].concat(jury, totals, [status]));
+  }
+  table.push([], ["Expert score sheets"], ["Team", "Market", "Expert", "Status"].concat(RUBRIC.map(([, name, weight]) => name + " (" + weight + ")"), ["Total"]));
+  for (const team of TEAMS) {
+    const grades = Array.isArray(gradesByTeam?.[team]) ? gradesByTeam[team] : [];
+    [0, 1, 2].forEach(expert => {
+      const grade = grades[expert];
+      const points = RUBRIC.map(([, , weight], index) => (grade?.checks?.[index] || []).filter(Boolean).length * weight / 4);
+      table.push([team, MARKETS[marketForTable(room, team)].name, "Expert " + (expert + 1), grade?.complete ? "complete" : grade ? "draft" : "not started"]
+        .concat(points.map(round), [round(points.reduce((sum, value) => sum + value, 0))]));
+    });
+  }
+  return table;
+}
+return { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename, csvCell, scoresCsv, scoresSheetTable };
+})();
+
+window.__omfModules = Object.assign(window.__omfModules || {}, { rules: __omf_rules, progress: __omf_progress, clock: __omf_clock, storage: __omf_storage, sync: __omf_sync, presentation: __omf_presentation });
 })();
 </script>
 <!-- End T123 -->

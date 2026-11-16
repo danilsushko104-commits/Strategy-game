@@ -59,16 +59,6 @@
 }
 #one-market-first .pv-top-inner { min-height: 73px; }
 #one-market-first .pv-brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
-#one-market-first .pv-brand-logo {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  flex: 0 0 auto;
-  color: var(--pv-white);
-  background: var(--pv-ink);
-}
-#one-market-first .pv-brand-logo svg { width: 25px; height: 25px; }
 #one-market-first .pv-brand-name { display: block; font-size: 15px; font-weight: 800; line-height: 1.2; }
 #one-market-first .pv-brand .pv-mono { display: block; margin-top: 4px; font-size: 10px; }
 #one-market-first .pv-tools, #one-market-first .pv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
@@ -480,9 +470,7 @@
   #one-market-first .pv-top-inner { min-height: 64px; }
   #one-market-first .pv-top-inner, #one-market-first .pv-footer-inner { gap: 8px; }
   #one-market-first .pv-brand { gap: 7px; }
-  #one-market-first .pv-brand-logo { width: 31px; height: 31px; }
-  #one-market-first .pv-brand-logo svg { width: 20px; height: 20px; }
-  #one-market-first .pv-brand-name { font-size: 13px; }
+    #one-market-first .pv-brand-name { font-size: 13px; }
   #one-market-first .pv-brand .pv-mono { font-size: 8px; margin-top: 2px; }
   #one-market-first .pv-tools { gap: 4px; }
   #one-market-first .pv-tools .pv-button { font-size: 12px; padding-inline: 6px; }
@@ -637,15 +625,20 @@
   #one-market-first .pv-bar .pv-board-context { display: none; }
   #one-market-first .pv-sticky .pv-progress li { padding: 5px 2px; }
 }
+
+/* Sign-up, team card and the facilitator's player lists */
+#one-market-first .pv-team-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+#one-market-first .pv-team-list li { overflow-wrap: anywhere; }
+#one-market-first .pv-radios { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; min-width: 0; }
+#one-market-first .pv-radios legend { font-weight: 700; margin-bottom: 8px; padding: 0; }
+#one-market-first .pv-radios label { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+#one-market-first .pv-inline-field { display: inline-grid; margin-right: 10px; vertical-align: bottom; }
 </style>
 
 <section id="one-market-first" lang="en" aria-label="Revolut — One Market First" data-sync-url="">
   <header class="pv-top">
     <div class="pv-shell pv-top-inner">
       <div class="pv-brand">
-        <span class="pv-brand-logo" aria-hidden="true">
-          <svg viewBox="0 0 32 32" fill="none"><path d="M6 26V6h20v20h-6M6 26h6M16 29V13m-6 6 6-6 6 6" stroke="currentColor" stroke-width="2"/></svg>
-        </span>
         <div><span class="pv-brand-name">One Market First</span><span class="pv-mono">Strategic Management · Seminar 5</span></div>
       </div>
       <nav class="pv-tools" aria-label="Game controls">

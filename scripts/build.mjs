@@ -17,8 +17,8 @@ export const OUTPUT_BLOCKS = {
 // They are sized to stay near 70 KB each.
 export const BLOCK_MODULES = {
   css: ["hash", "tuning", "scenario"],
-  engine: ["rules", "progress", "clock", "storage", "sync"],
-  interface: ["presentation", "host", "app"]
+  engine: ["rules", "progress", "clock", "storage", "sync", "presentation"],
+  interface: ["host", "app"]
 };
 export const MODULES = Object.values(BLOCK_MODULES).flat();
 const ENTRY = "app";

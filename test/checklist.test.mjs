@@ -20,59 +20,52 @@ const allRecords = () => Object.fromEntries([1, 2, 3, 4].map(team => [team, reco
 const states = result => result.steps.map(step => step.state).join(" ");
 const step = (result, id) => result.steps.find(item => item.id === id);
 
-test("Before the seminar the facilitator is told to get the tables in", () => {
-  const result = hostChecklist({room, now: at(-60), grades: {}, records: {}, joined: false});
+test("Before R1 the checklist says the game has started and waits for the rounds", () => {
+  const result = hostChecklist({room, now: at(-5), grades: {}, records: {}});
   assert.equal(result.phase.id, "SETUP");
-  assert.equal(states(result), "done now later later later later");
-  assert.match(result.next, /Ask every team to open the page/);
-  assert.equal(step(result, "files").detail, "0 of 4 tables have all 7 decisions. Missing: table 1, table 2, table 3, table 4.");
+  assert.equal(states(result), "done now later later later");
+  assert.match(result.next, /Wait for R1/);
+  assert.equal(step(result, "started").title, "Game started");
+  assert.equal(result.steps.some(item => item.id === "joined"), false, "the sheet knows who joined: there is nothing to tick");
+  assert.equal(step(result, "files").detail, "0 of 4 teams have all 7 decisions. Missing: team 1, team 2, team 3, team 4.");
 });
 
-test("Ticking that the tables are in moves on to waiting for the game, then to the rounds", () => {
-  const waiting = hostChecklist({room, now: at(-5), grades: {}, records: {}, joined: true});
-  assert.equal(states(waiting), "done done now later later later");
-  assert.match(waiting.next, /Wait for R1/);
-  const running = hostChecklist({room, now: at(40), grades: {}, records: {}, joined: true});
+test("During the rounds the game step is current", () => {
+  const running = hostChecklist({room, now: at(40), grades: {}, records: {}});
   assert.equal(step(running, "game").state, "now");
   assert.equal(step(running, "game").detail, "The rounds are running.");
   assert.match(running.next, /saved in Google Sheets/);
 });
 
-test("A finished game or team data in the sheet counts as proof that the tables joined", () => {
-  assert.equal(step(hostChecklist({room, now: at(40), grades: {}, records: {}, joined: false}), "joined").done, false, "a running game alone proves nothing");
-  assert.equal(step(hostChecklist({room, now: at(40), grades: {}, records: {2: record(2, 4)}, joined: false}), "joined").done, true, "team data that has arrived does");
-  assert.equal(step(hostChecklist({room, now: at(125), grades: {}, records: {}, joined: false}), "joined").done, true, "a finished game does");
-});
-
 test("After R7 the next job is waiting for the team data, and a table still playing is reported", () => {
-  const result = hostChecklist({room, now: at(125), grades: {}, records: {1: record(1, 7), 2: record(2, 4)}, joined: false});
+  const result = hostChecklist({room, now: at(125), grades: {}, records: {1: record(1, 7), 2: record(2, 4)}});
   assert.equal(result.phase.id, "PREP");
   assert.equal(step(result, "game").done, true);
   assert.equal(step(result, "files").state, "now");
-  assert.equal(step(result, "files").detail, "1 of 4 tables have all 7 decisions. Missing: table 2, table 3, table 4. Still playing: table 2.");
+  assert.equal(step(result, "files").detail, "1 of 4 teams have all 7 decisions. Missing: team 2, team 3, team 4. Still playing: team 2.");
   assert.match(result.next, /appear here from Google Sheets/);
 });
 
 test("Expert sheets are counted and the ranking step opens when everything is in", () => {
   const partial = {1: [sheet(), sheet(), {complete: false, checks: []}], 2: [sheet(), sheet(), sheet()]};
-  const result = hostChecklist({room, now: at(140), grades: partial, records: allRecords(), joined: true});
+  const result = hostChecklist({room, now: at(140), grades: partial, records: allRecords()});
   assert.equal(step(result, "files").done, true);
-  assert.equal(step(result, "sheets").detail, "5 of 12 sheets are marked complete (three experts for each of four tables).");
+  assert.equal(step(result, "sheets").detail, "5 of 12 sheets are marked complete (three experts for each of four teams).");
   assert.equal(step(result, "sheets").state, "now");
   assert.equal(step(result, "ranking").done, false);
 
-  const done = hostChecklist({room, now: at(140), grades: allSheets(), records: allRecords(), joined: true});
-  assert.equal(states(done), "done done done done done done");
+  const done = hostChecklist({room, now: at(140), grades: allSheets(), records: allRecords()});
+  assert.equal(states(done), "done done done done done");
   assert.match(done.next, /Everything is done/);
 });
 
 test("Without a game result the team files are optional", () => {
   const restore = useTuning(LEGACY);
   try {
-    const result = hostChecklist({room, now: at(125), grades: allSheets(), records: {}, joined: true});
+    const result = hostChecklist({room, now: at(125), grades: allSheets(), records: {}});
     assert.equal(step(result, "files").done, true);
     assert.match(step(result, "files").detail, /^Optional without a game result\. 0 of 4/);
-    assert.equal(step(result, "ranking").done, true, "the expert sheets alone rank the tables");
+    assert.equal(step(result, "ranking").done, true, "the expert sheets alone rank the teams");
   } finally {
     restore();
   }

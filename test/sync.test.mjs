@@ -224,10 +224,11 @@ test("A local test backend on this machine is accepted without https", () => {
   assert.equal(syncStatus().status, "off");
 });
 
-// ---- Reading from the sheet ----
+// ---- Talking to the sheet ----
 
 import { createBackend } from '../scripts/fake-google.mjs';
-import { fetchConfig, fetchTeam, fetchRoom, publishRoom, recordFromPayload, syncEnabled } from '../src/sync.mjs';
+import { fetchTeam, fetchRoom, fetchRoster, fetchMe, joinGame, setReady, claimCaptain, hostCommand, pushScores, setParticipant, recordFromPayload, syncEnabled } from '../src/sync.mjs';
+import { TEAMS } from '../src/rules.mjs';
 
 // The game's own requests, answered by the real Code.gs on a fake spreadsheet.
 function viaScript(backend) {
@@ -237,16 +238,34 @@ function viaScript(backend) {
   };
 }
 
+const PASSWORD = "a good password";
+const pid = index => "player-id-" + String(index).padStart(6, "0");
+
+function bound() {
+  const backend = createBackend({token: PASSWORD});
+  return {backend, request: viaScript(backend)};
+}
+
+async function game() {
+  const backend = createBackend({token: PASSWORD});
+  const request = viaScript(backend);
+  for (let index = 1; index <= 8; index++) await joinGame(pid(index), "Player " + index, index % 3 === 0, {request});
+  await hostCommand("form", PASSWORD, {}, {request});
+  await hostCommand("start", PASSWORD, {room, start: at(0), markets: TEAMS.map(team => marketForTable(room, team))}, {request});
+  const players = backend.table("Players");
+  return {backend, request, pass: Object.fromEntries(TEAMS.map(team => [team, players.find(row => Number(row.team) === team).id]))};
+}
+
 test("A team continues on another device from what the sheet holds: decisions, notes and brief", async () => {
   clearSlot(room, 1);
   configureSync(URL);
   assert.equal(syncEnabled(), true);
-  const backend = createBackend();
-  const request = viaScript(backend);
+  const {request, pass} = await game();
+  setParticipant(pass[1]);
   const original = withNotes(liveRecord([...threeRounds(), decision("R4", "verify", 55)]), {"R1.cage": "Two differences", "R3.early": "Month 0-3"}, "Fund the pilot");
   await flushSync(original, {request});
 
-  const payload = await fetchTeam(room, 1, {request});
+  const payload = await fetchTeam(pass[1], {request});
   const restored = recordFromPayload(payload, original.market);
   assert.deepEqual(restored.history.map(event => [event.round, event.choice, event.method, event.at, event.evidence]),
     original.history.map(event => [event.round, event.choice, event.method, event.at, event.evidence]));
@@ -258,34 +277,68 @@ test("A team continues on another device from what the sheet holds: decisions, n
   assert.equal(replay(restored).state.credits, replay(original).state.credits);
 });
 
+test("Without the pass of a team member nothing is stored: the sheet refuses decisions of someone else", async () => {
+  clearSlot(room, 1);
+  configureSync(URL);
+  const {backend, request, pass} = await game();
+  setParticipant(pass[2]);
+  const status = await flushSync(liveRecord(threeRounds()), {request});
+  assert.equal(backend.table("Decisions").length, 0, "team 2's pass cannot write team 1's decisions");
+  assert.equal(status.status, "retry", "the page keeps them and says they are not saved");
+  setParticipant(pass[1]);
+  await flushSync(liveRecord(threeRounds()), {request, force: true});
+  assert.equal(backend.table("Decisions").length, 3);
+});
+
 test("An empty sheet restores to a fresh game; unknown or tampered data is refused", async () => {
   configureSync(URL);
-  const backend = createBackend();
-  const request = viaScript(backend);
-  const empty = recordFromPayload(await fetchTeam(room, 4, {request}), "vietnam");
+  const {request, pass} = await game();
+  const empty = recordFromPayload(await fetchTeam(pass[4], {request}), "vietnam");
   assert.equal(empty.history.length, 0);
   assert.throws(() => recordFromPayload({room, team: 4, decisions: [{round: "R1", choice: "ZZ", method: "submitted", at: at(5), evidence: "e", tradeoff: "t"}], notes: []}, "vietnam"));
 });
 
-test("The room and start time are published by the facilitator and read by teams", async () => {
+test("A player joins, sees the team after the draw, says ready and can take over as captain", async () => {
   configureSync(URL);
-  const backend = createBackend({token: "a good password"});
-  const request = viaScript(backend);
-  assert.deepEqual(await fetchConfig({request}), {room: "", start: ""});
-  await assert.rejects(publishRoom(room, start, "wrong", {request}), /Wrong facilitator password/);
-  await publishRoom(room, start, "a good password", {request});
-  assert.deepEqual(await fetchConfig({request}), {room, start: new Date(start).toISOString()});
+  const {backend, request} = bound();
+  const me = await joinGame(pid(1), "Anna K", true, {request});
+  assert.equal(me.state, "lobby");
+  await assert.rejects(joinGame(pid(2), "anna k", false, {request}), /already taken/);
+  for (let index = 2; index <= 6; index++) await joinGame(pid(index), "Player " + index, false, {request});
+  assert.equal((await fetchMe(pid(1), {request})).players, 6);
+  await assert.rejects(hostCommand("form", "nope", {}, {request}), /Wrong facilitator password/);
+  const roster = await hostCommand("form", PASSWORD, {}, {request});
+  assert.equal(roster.state, "formed");
+  const formed = await fetchMe(pid(1), {request});
+  assert.ok(formed.team >= 1 && formed.members.length >= 1);
+  assert.equal((await setReady(pid(1), true, {request})).ready, true);
+  const other = formed.members.find(member => member.name !== "Anna K");
+  if (other) {
+    const index = Number(other.name.split(" ")[1]);
+    assert.equal((await claimCaptain(pid(index), {request})).captain, true);
+    assert.equal((await fetchMe(pid(1), {request})).captain, false);
+  }
+  assert.equal((await fetchRoster(PASSWORD, {request})).players.length, 6);
+  assert.equal(backend.table("Players").length, 6);
 });
 
-test("The facilitator reads every team of the room, with the password", async () => {
+test("The facilitator reads every team of the game, with the password", async () => {
   clearSlot(room, 1);
   configureSync(URL);
-  const backend = createBackend({token: "a good password"});
-  const request = viaScript(backend);
+  const {request, pass} = await game();
+  setParticipant(pass[1]);
   await flushSync(liveRecord(threeRounds()), {request});
-  await assert.rejects(fetchRoom(room, "nope", {request}), /Wrong facilitator password/);
-  const data = await fetchRoom(room, "a good password", {request});
+  await assert.rejects(fetchRoom("nope", {request}), /Wrong facilitator password/);
+  const data = await fetchRoom(PASSWORD, {request});
   assert.deepEqual(data.teams.map(team => team.decisions.length), [3, 0, 0, 0]);
+});
+
+test("The facilitator's expert scores are sent to the Scores sheet", async () => {
+  configureSync(URL);
+  const {backend, request} = await game();
+  await assert.rejects(pushScores("nope", [["a"]], {request}), /Wrong facilitator password/);
+  await pushScores(PASSWORD, [["Rank", "Team"], [1, 2]], {request});
+  assert.deepEqual(backend.spreadsheet.getSheetByName("Scores").rows[1].slice(0, 2), [1, 2]);
 });
 
 test("A note typed while a send is running is sent right after it, not at the next timer", async () => {

@@ -1,4 +1,4 @@
-import { MARKETS, ROUNDS, WORKSHEET, CONFIG, QUESTION } from './scenario.mjs';
+import { MARKETS, ROUNDS, WORKSHEET, CONFIG, QUESTION, RUBRIC } from './scenario.mjs';
 import { OUTCOMES, TEAMS, replay, roomStart, marketForTable, scoreExpert, standings } from './rules.mjs';
 import { tuning } from './tuning.mjs';
 
@@ -122,4 +122,32 @@ export function scoresCsv(room, gradesByTeam, {russianExcel = false, records = {
     return [row.rank ?? "", row.team, MARKETS[marketForTable(room, row.team)].name].concat(jury, totals, experts, [status]);
   }));
   return "\ufeff" + lines.map(line => line.map(cell => csvCell(cell, separator)).join(separator)).join("\r\n") + "\r\n";
+}
+
+// The same scores as a table for the Scores sheet in Google Sheets: the ranking of the teams, then every expert's points per
+// criterion. Numbers stay numbers so the facilitator can sort and add them there.
+export function scoresSheetTable(room, gradesByTeam, records = {}) {
+  const round = value => Math.round(value * 10) / 10;
+  const counted = tuning().gameShare > 0;
+  const rows = standings(gradesByTeam, records);
+  const table = [["Rank", "Team", "Market", "Written (70)", "Oral (30)", "Uppsala (16)"].concat(counted ? ["Experts (100)", "Game (100)", "Final (100)"] : ["Total (100)"], ["Status"])];
+  for (const row of rows) {
+    const grades = Array.isArray(gradesByTeam?.[row.team]) ? gradesByTeam[row.team] : [];
+    const done = [0, 1, 2].filter(expert => grades[expert]?.complete).length;
+    const status = row.key ? (row.tied ? "tied: the Chair decides" : "complete") : row.jury ? "waiting for the team’s game result" : done + " of 3 expert sheets complete";
+    const jury = row.jury ? [row.jury.written, row.jury.oral, row.jury.uppsala].map(round) : ["", "", ""];
+    const totals = counted ? [row.jury ? round(row.jury.total) : "", row.game === null ? "" : round(row.game), row.final === null ? "" : round(row.final)] : [row.jury ? round(row.jury.total) : ""];
+    table.push([row.rank ?? "", row.team, MARKETS[marketForTable(room, row.team)].name].concat(jury, totals, [status]));
+  }
+  table.push([], ["Expert score sheets"], ["Team", "Market", "Expert", "Status"].concat(RUBRIC.map(([, name, weight]) => name + " (" + weight + ")"), ["Total"]));
+  for (const team of TEAMS) {
+    const grades = Array.isArray(gradesByTeam?.[team]) ? gradesByTeam[team] : [];
+    [0, 1, 2].forEach(expert => {
+      const grade = grades[expert];
+      const points = RUBRIC.map(([, , weight], index) => (grade?.checks?.[index] || []).filter(Boolean).length * weight / 4);
+      table.push([team, MARKETS[marketForTable(room, team)].name, "Expert " + (expert + 1), grade?.complete ? "complete" : grade ? "draft" : "not started"]
+        .concat(points.map(round), [round(points.reduce((sum, value) => sum + value, 0))]));
+    });
+  }
+  return table;
 }

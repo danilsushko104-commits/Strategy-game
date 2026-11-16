@@ -69,16 +69,6 @@
 }
 #one-market-first .pv-top-inner { min-height: 73px; }
 #one-market-first .pv-brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
-#one-market-first .pv-brand-logo {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  flex: 0 0 auto;
-  color: var(--pv-white);
-  background: var(--pv-ink);
-}
-#one-market-first .pv-brand-logo svg { width: 25px; height: 25px; }
 #one-market-first .pv-brand-name { display: block; font-size: 15px; font-weight: 800; line-height: 1.2; }
 #one-market-first .pv-brand .pv-mono { display: block; margin-top: 4px; font-size: 10px; }
 #one-market-first .pv-tools, #one-market-first .pv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
@@ -490,9 +480,7 @@
   #one-market-first .pv-top-inner { min-height: 64px; }
   #one-market-first .pv-top-inner, #one-market-first .pv-footer-inner { gap: 8px; }
   #one-market-first .pv-brand { gap: 7px; }
-  #one-market-first .pv-brand-logo { width: 31px; height: 31px; }
-  #one-market-first .pv-brand-logo svg { width: 20px; height: 20px; }
-  #one-market-first .pv-brand-name { font-size: 13px; }
+    #one-market-first .pv-brand-name { font-size: 13px; }
   #one-market-first .pv-brand .pv-mono { font-size: 8px; margin-top: 2px; }
   #one-market-first .pv-tools { gap: 4px; }
   #one-market-first .pv-tools .pv-button { font-size: 12px; padding-inline: 6px; }
@@ -647,15 +635,20 @@
   #one-market-first .pv-bar .pv-board-context { display: none; }
   #one-market-first .pv-sticky .pv-progress li { padding: 5px 2px; }
 }
+
+/* Sign-up, team card and the facilitator's player lists */
+#one-market-first .pv-team-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+#one-market-first .pv-team-list li { overflow-wrap: anywhere; }
+#one-market-first .pv-radios { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; min-width: 0; }
+#one-market-first .pv-radios legend { font-weight: 700; margin-bottom: 8px; padding: 0; }
+#one-market-first .pv-radios label { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+#one-market-first .pv-inline-field { display: inline-grid; margin-right: 10px; vertical-align: bottom; }
 </style>
 
 <section id="one-market-first" lang="en" aria-label="Revolut — One Market First" data-sync-url="">
   <header class="pv-top">
     <div class="pv-shell pv-top-inner">
       <div class="pv-brand">
-        <span class="pv-brand-logo" aria-hidden="true">
-          <svg viewBox="0 0 32 32" fill="none"><path d="M6 26V6h20v20h-6M6 26h6M16 29V13m-6 6 6-6 6 6" stroke="currentColor" stroke-width="2"/></svg>
-        </span>
         <div><span class="pv-brand-name">One Market First</span><span class="pv-mono">Strategic Management · Seminar 5</span></div>
       </div>
       <nav class="pv-tools" aria-label="Game controls">
@@ -1684,7 +1677,7 @@ function standings(grades, records = {}) {
 // The facilitator's "what's next" list. Only the facilitator's own browser knows these facts: the room,
 // the clock, the team data read from the sheet and the expert sheets. Whether the teams have joined cannot be seen,
 // so that step is ticked by hand.
-function hostChecklist({room, now, grades, records, joined}) {
+function hostChecklist({room, now, grades, records}) {
   const phase = phaseAt(room, now);
   const counted = tuning().gameShare > 0;
   const full = TEAMS.filter(team => records?.[team]?.history?.length === ROUNDS.length);
@@ -1693,29 +1686,24 @@ function hostChecklist({room, now, grades, records, joined}) {
   const sheets = TEAMS.reduce((sum, team) => sum + [0, 1, 2].filter(expert => grades?.[team]?.[expert]?.complete).length, 0);
   const ranked = standings(grades, records).every(row => row.key);
   const finished = ["PREP", "PITCH", "DEBRIEF", "END"].includes(phase.id);
-  const list = (tables) => tables.map(team => "table " + team).join(", ");
+  const list = (teams) => teams.map(team => "team " + team).join(", ");
   const steps = [
-    {id: "room", title: "Room created", done: true,
-      detail: "Show the room code and the table assignment to the students."},
-    // Team data in the sheet, or a finished game, proves that the tables were in.
-    {id: "joined", title: "Every table has joined", done: !!joined || finished || TEAMS.some(team => records?.[team]),
-      detail: "Each team opens the page and enters the room code with its table number. This page cannot see the teams, so tick the box once you have checked."},
+    {id: "started", title: "Game started", done: true, detail: "The teams were formed and the game began. Each team plays on its captain’s device."},
     {id: "game", title: "The game is played", done: finished,
       detail: finished ? "All seven rounds are over." : phase.id === "SETUP" ? "R1 has not started yet." : "The rounds are running."},
     {id: "files", title: "Team data from Google Sheets", done: counted ? full.length === TEAMS.length : true,
-      detail: (counted ? "" : "Optional without a game result. ") + full.length + " of " + TEAMS.length + " tables have all " + ROUNDS.length + " decisions" +
+      detail: (counted ? "" : "Optional without a game result. ") + full.length + " of " + TEAMS.length + " teams have all " + ROUNDS.length + " decisions" +
         (missing.length ? ". Missing: " + list(missing) : "") + (partial.length ? ". Still playing: " + list(partial) : "") + "."},
     {id: "sheets", title: "Expert sheets complete", done: sheets === TEAMS.length * 3,
-      detail: sheets + " of " + TEAMS.length * 3 + " sheets are marked complete (three experts for each of four tables)."},
+      detail: sheets + " of " + TEAMS.length * 3 + " sheets are marked complete (three experts for each of four teams)."},
     {id: "ranking", title: "Ranking and export", done: ranked,
       detail: ranked ? "The ranking is ready: check it and export the scores." : "Ready when the two steps above are done."}
   ];
   const current = steps.findIndex(step => !step.done);
   const next = {
-    joined: "Ask every team to open the page and join with the room code and its table number.",
     game: phase.id === "SETUP" ? "Wait for R1. Explain the mandate and run the practice example." : "Run the seminar. The teams’ data is saved in Google Sheets as they play.",
     files: "Teams finish R7 and their decisions and notes appear here from Google Sheets. Press Refresh now if you do not want to wait.",
-    sheets: "The three experts complete their score sheets for every table.",
+    sheets: "The three experts complete their score sheets for every team.",
     ranking: "Check the ranking and export the CSV."
   }[steps[current]?.id] ?? "Everything is done. Keep the team journals and the exported scores.";
   return {phase, steps: steps.map((step, index) => ({...step, state: step.done ? "done" : index === current ? "now" : "later"})), next};
@@ -2122,18 +2110,18 @@ function writeSynced(room, team, endpoint, count) {
   writeSyncState(room, team, endpoint, {...state, count});
 }
 
-// The room the facilitator opened, remembered so that a reload without a connection still finds it.
-function readConfigCache() {
+// The player of this device: a secret pass the sheet recognizes, and the name shown to teammates.
+function readPlayer() {
   try {
-    const value = JSON.parse(getStored(prefix + ":config"));
-    return typeof value?.room === "string" ? value : null;
+    const value = JSON.parse(getStored(prefix + ":player"));
+    return typeof value?.id === "string" && value.id.length >= 16 && typeof value.name === "string" ? {id: value.id, name: value.name} : null;
   } catch {
     return null;
   }
 }
 
-function writeConfigCache(config) {
-  putStored(prefix + ":config", JSON.stringify({room: config.room, start: config.start}));
+function writePlayer(player) {
+  putStored(prefix + ":player", player ? JSON.stringify({id: player.id, name: player.name}) : null);
 }
 
 function activeTeam(value) {
@@ -2165,7 +2153,7 @@ function withSaveLock(key, change) {
 function knownTable(value) {
   return value && TEAMS.includes(value.team) && (value.room === "PRACTICE" || roomStart(value.room) !== null);
 }
-return { storageAvailable, getStored, putStored, teamKey, hostKey, SaveError, readSlot, storeRecord, clearSlot, mirrorPut, mirrorGet, mirrorStatus, recoveryOptions, requestPersistence, persistenceState, readSyncState, writeSyncState, readSynced, writeSynced, readConfigCache, writeConfigCache, activeTeam, newId, newRecord, withSaveLock, knownTable };
+return { storageAvailable, getStored, putStored, teamKey, hostKey, SaveError, readSlot, storeRecord, clearSlot, mirrorPut, mirrorGet, mirrorStatus, recoveryOptions, requestPersistence, persistenceState, readSyncState, writeSyncState, readSynced, writeSynced, readPlayer, writePlayer, activeTeam, newId, newRecord, withSaveLock, knownTable };
 })();
 
 // src/sync.mjs
@@ -2181,7 +2169,7 @@ const { readSyncState, writeSyncState, newRecord } = __omf_storage;
 // Events carry a deterministic id, so the sheet can drop duplicates and a re-send is always safe.
 
 const SEPARATOR = "␟";
-const state = {endpoint: "", status: "off", total: 0, pending: 0, pendingNotes: 0, error: ""};
+const state = {endpoint: "", status: "off", total: 0, pending: 0, pendingNotes: 0, error: "", participant: ""};
 let sending = null;
 
 function configureSync(url) {
@@ -2189,6 +2177,11 @@ function configureSync(url) {
   state.endpoint = /^(https:\/\/[^\s]+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/[^\s]*)$/.test(endpoint) ? endpoint : "";
   state.status = state.endpoint ? "idle" : "off";
   state.error = "";
+}
+
+// The player's secret pass: the sheet accepts a team's decisions and notes only from a player of that team.
+function setParticipant(id) {
+  state.participant = String(id || "");
 }
 
 function syncStatus() {
@@ -2240,7 +2233,7 @@ async function post(payload, request) {
   }
 }
 
-const envelope = () => ({v: 1, sentAt: new Date(trueNow()).toISOString(), clockOffsetMs: Math.round(clockStatus().offset)});
+const envelope = () => ({v: 1, participant: state.participant, sentAt: new Date(trueNow()).toISOString(), clockOffsetMs: Math.round(clockStatus().offset)});
 
 // Worksheet notes and the Board Brief that changed since they were last sent.
 function buildNotesPayload(record, sent) {
@@ -2345,9 +2338,10 @@ function syncSummary() {
   return text ? {state: status, text} : null;
 }
 
-// ---- Reading from the sheet ------------------------------------------------------------------------------
-// The sheet is the only store, so a page that has no local save asks it (a team continuing on another device),
-// the facilitator's page reads every team from it, and the room and start time come from its Settings.
+// ---- Talking to the sheet -------------------------------------------------------------------------------
+// The sheet is the only store. A player's page asks it which team the player is in and, once the game runs, for the
+// team's earlier game (continuing on another device). The facilitator's page forms the teams, starts the game and
+// reads every team. The room code is an internal detail: players never type it.
 
 function syncEnabled() {
   return !!state.endpoint;
@@ -2362,30 +2356,58 @@ async function read(query, request) {
   return reply;
 }
 
-// {room, start}: what the facilitator opened. Empty room means nothing is open yet.
-async function fetchConfig({request = globalThis.fetch} = {}) {
-  const reply = await read({action: "config"}, request);
-  return {room: reply.room || "", start: reply.start || ""};
-}
-
-async function fetchTeam(room, team, {request = globalThis.fetch} = {}) {
-  return read({action: "team", room, team}, request);
-}
-
-async function fetchRoom(room, token, {request = globalThis.fetch} = {}) {
-  return read({action: "room", room, token}, request);
-}
-
-// The facilitator opens a room: it is stored in the sheet's Settings for the teams to read.
-async function publishRoom(room, start, token, {request = globalThis.fetch} = {}) {
+async function command(body, request) {
   const response = await request(state.endpoint, {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, redirect: "follow",
-    body: JSON.stringify({v: 1, type: "room", token, room, start: new Date(start).toISOString()})});
+    body: JSON.stringify({v: 1, ...body})});
+  if (!response.ok) throw new Error("The sheet answered with status " + response.status + ".");
   const reply = await response.json();
-  if (!reply?.ok) throw new Error(reply?.error || "The sheet did not accept the room.");
+  if (!reply?.ok) throw new Error(reply?.error || "The sheet did not accept the request.");
   return reply;
 }
 
-// A table's saved game rebuilt from what the sheet holds. The record is checked like any other save.
+const withRequest = ({request = globalThis.fetch} = {}) => request;
+
+// Player: {found, state: lobby | formed | started, team, captain, ready, members, room, start}
+function joinGame(id, name, international, options) {
+  return command({type: "join", id, name, international}, withRequest(options));
+}
+
+function fetchMe(id, options) {
+  return read({action: "me", id}, withRequest(options));
+}
+
+function setReady(id, ready, options) {
+  return command({type: "ready", id, ready}, withRequest(options));
+}
+
+function claimCaptain(id, options) {
+  return command({type: "captain", id}, withRequest(options));
+}
+
+// The player's own team: its decisions and notes.
+function fetchTeam(id, options) {
+  return read({action: "team", id}, withRequest(options));
+}
+
+// Facilitator
+function fetchRoster(token, options) {
+  return read({action: "roster", token}, withRequest(options));
+}
+
+function fetchRoom(token, options) {
+  return read({action: "room", token}, withRequest(options));
+}
+
+// type: form | start | reset | demo
+function hostCommand(type, token, extra = {}, options) {
+  return command({type, token, ...extra}, withRequest(options));
+}
+
+function pushScores(token, table, options) {
+  return command({type: "scores", token, table}, withRequest(options));
+}
+
+// A team's saved game rebuilt from what the sheet holds. The record is checked like any other save.
 function recordFromPayload(payload, market) {
   const notes = {};
   for (const item of payload.notes || []) notes[item.round + "." + item.field] = item.text;
@@ -2396,39 +2418,12 @@ function recordFromPayload(payload, market) {
       evidence: item.evidence, tradeoff: item.tradeoff, ...(item.problem ? {problem: item.problem} : {})}))
   });
 }
-return { configureSync, syncStatus, buildEvents, buildNotesPayload, flushSync, syncSummary, syncEnabled, fetchConfig, fetchTeam, fetchRoom, publishRoom, recordFromPayload };
+return { configureSync, setParticipant, syncStatus, buildEvents, buildNotesPayload, flushSync, syncSummary, syncEnabled, joinGame, fetchMe, setReady, claimCaptain, fetchTeam, fetchRoster, fetchRoom, hostCommand, pushScores, recordFromPayload };
 })();
-
-window.__omfModules = Object.assign(window.__omfModules || {}, { rules: __omf_rules, progress: __omf_progress, clock: __omf_clock, storage: __omf_storage, sync: __omf_sync });
-})();
-</script>
-<!-- End T123 -->
-<!-- T123 · Revolut — One Market First · block 3 of 3: game interface · generated by node scripts/build.mjs -->
-<script>
-(async () => {
-"use strict";
-
-const shared = window.__omfModules || {};
-if (!shared.hash || !shared.tuning || !shared.scenario || !shared.rules || !shared.progress || !shared.clock || !shared.storage || !shared.sync) {
-  const notice = document.querySelector('#one-market-first [data-ui="notice"]');
-  if (notice) {
-    notice.textContent = "A game block is missing. Paste the three blocks in order: 1 HTML, styles and data, 2 game engine, 3 game interface.";
-    notice.hidden = false;
-  }
-  return;
-}
-const __omf_hash = shared.hash;
-const __omf_tuning = shared.tuning;
-const __omf_scenario = shared.scenario;
-const __omf_rules = shared.rules;
-const __omf_progress = shared.progress;
-const __omf_clock = shared.clock;
-const __omf_storage = shared.storage;
-const __omf_sync = shared.sync;
 
 // src/presentation.mjs
 const __omf_presentation = (() => {
-const { MARKETS, ROUNDS, WORKSHEET, CONFIG, QUESTION } = __omf_scenario;
+const { MARKETS, ROUNDS, WORKSHEET, CONFIG, QUESTION, RUBRIC } = __omf_scenario;
 const { OUTCOMES, TEAMS, replay, roomStart, marketForTable, scoreExpert, standings } = __omf_rules;
 const { tuning } = __omf_tuning;
 function esc(value) {
@@ -2552,8 +2547,64 @@ function scoresCsv(room, gradesByTeam, {russianExcel = false, records = {}} = {}
   }));
   return "\ufeff" + lines.map(line => line.map(cell => csvCell(cell, separator)).join(separator)).join("\r\n") + "\r\n";
 }
-return { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename, csvCell, scoresCsv };
+
+// The same scores as a table for the Scores sheet in Google Sheets: the ranking of the teams, then every expert's points per
+// criterion. Numbers stay numbers so the facilitator can sort and add them there.
+function scoresSheetTable(room, gradesByTeam, records = {}) {
+  const round = value => Math.round(value * 10) / 10;
+  const counted = tuning().gameShare > 0;
+  const rows = standings(gradesByTeam, records);
+  const table = [["Rank", "Team", "Market", "Written (70)", "Oral (30)", "Uppsala (16)"].concat(counted ? ["Experts (100)", "Game (100)", "Final (100)"] : ["Total (100)"], ["Status"])];
+  for (const row of rows) {
+    const grades = Array.isArray(gradesByTeam?.[row.team]) ? gradesByTeam[row.team] : [];
+    const done = [0, 1, 2].filter(expert => grades[expert]?.complete).length;
+    const status = row.key ? (row.tied ? "tied: the Chair decides" : "complete") : row.jury ? "waiting for the team’s game result" : done + " of 3 expert sheets complete";
+    const jury = row.jury ? [row.jury.written, row.jury.oral, row.jury.uppsala].map(round) : ["", "", ""];
+    const totals = counted ? [row.jury ? round(row.jury.total) : "", row.game === null ? "" : round(row.game), row.final === null ? "" : round(row.final)] : [row.jury ? round(row.jury.total) : ""];
+    table.push([row.rank ?? "", row.team, MARKETS[marketForTable(room, row.team)].name].concat(jury, totals, [status]));
+  }
+  table.push([], ["Expert score sheets"], ["Team", "Market", "Expert", "Status"].concat(RUBRIC.map(([, name, weight]) => name + " (" + weight + ")"), ["Total"]));
+  for (const team of TEAMS) {
+    const grades = Array.isArray(gradesByTeam?.[team]) ? gradesByTeam[team] : [];
+    [0, 1, 2].forEach(expert => {
+      const grade = grades[expert];
+      const points = RUBRIC.map(([, , weight], index) => (grade?.checks?.[index] || []).filter(Boolean).length * weight / 4);
+      table.push([team, MARKETS[marketForTable(room, team)].name, "Expert " + (expert + 1), grade?.complete ? "complete" : grade ? "draft" : "not started"]
+        .concat(points.map(round), [round(points.reduce((sum, value) => sum + value, 0))]));
+    });
+  }
+  return table;
+}
+return { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename, csvCell, scoresCsv, scoresSheetTable };
 })();
+
+window.__omfModules = Object.assign(window.__omfModules || {}, { rules: __omf_rules, progress: __omf_progress, clock: __omf_clock, storage: __omf_storage, sync: __omf_sync, presentation: __omf_presentation });
+})();
+</script>
+<!-- End T123 -->
+<!-- T123 · Revolut — One Market First · block 3 of 3: game interface · generated by node scripts/build.mjs -->
+<script>
+(async () => {
+"use strict";
+
+const shared = window.__omfModules || {};
+if (!shared.hash || !shared.tuning || !shared.scenario || !shared.rules || !shared.progress || !shared.clock || !shared.storage || !shared.sync || !shared.presentation) {
+  const notice = document.querySelector('#one-market-first [data-ui="notice"]');
+  if (notice) {
+    notice.textContent = "A game block is missing. Paste the three blocks in order: 1 HTML, styles and data, 2 game engine, 3 game interface.";
+    notice.hidden = false;
+  }
+  return;
+}
+const __omf_hash = shared.hash;
+const __omf_tuning = shared.tuning;
+const __omf_scenario = shared.scenario;
+const __omf_rules = shared.rules;
+const __omf_progress = shared.progress;
+const __omf_clock = shared.clock;
+const __omf_storage = shared.storage;
+const __omf_sync = shared.sync;
+const __omf_presentation = shared.presentation;
 
 // src/host.mjs
 const __omf_host = (() => {
@@ -2561,45 +2612,43 @@ const { MARKETS, BULLETINS, RUBRIC, QUESTION } = __omf_scenario;
 const { TEAMS, SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, standings, compareScores, hostChecklist } = __omf_rules;
 const { tuning } = __omf_tuning;
 const { hostKey, getStored, putStored } = __omf_storage;
-const { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, scoresCsv } = __omf_presentation;
+const { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, scoresCsv, scoresSheetTable } = __omf_presentation;
 const { trueNow } = __omf_clock;
-const { syncEnabled, fetchRoom, publishRoom, recordFromPayload } = __omf_sync;
-const activeKey = hostKey("active");
-const moscowDate = new Intl.DateTimeFormat("sv-SE", {timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit"});
+const { syncEnabled, fetchRoom, fetchRoster, hostCommand, pushScores, recordFromPayload } = __omf_sync;
 function freshPanel() {
-  return {grades: {}, joined: false};
+  return {grades: {}};
 }
 
 // `records` are the teams' games rebuilt from the sheet; they are read again, never stored here.
-const host = {room: "", start: "", selected: 1, panel: freshPanel(), records: {}, token: getStored(hostKey("token")) || "",
+// In the hosted game the sheet also holds the players, the state of the game and the room code (an internal detail).
+const host = {room: "", selected: 1, panel: freshPanel(), records: {}, token: getStored(hostKey("token")) || "",
+  state: "", players: [], delay: 2, scoresSent: {at: 0, error: ""},
   refresh: {at: 0, error: "", loading: false, problems: {}}};
-try {
-  const room = getStored(activeKey);
-  if (roomStart(room) !== null) {
-    host.room = room;
+
+function loadPanel(room) {
+  try {
     const panel = JSON.parse(getStored(hostKey(room)));
-    if (panel) host.panel = {grades: panel.grades && typeof panel.grades === "object" ? panel.grades : {}, joined: !!panel.joined};
+    host.panel = panel && typeof panel.grades === "object" ? {grades: panel.grades} : freshPanel();
+  } catch {
+    host.panel = freshPanel();
   }
-} catch {
-  host.panel = freshPanel();
 }
 
 function storePanel() {
-  putStored(activeKey, host.room);
   putStored(hostKey(host.room), JSON.stringify(host.panel));
 }
 
 function connectionText() {
   const {at, error, loading} = host.refresh;
   if (!syncEnabled()) return "This page has no Google Sheets address (data-sync-url), so team data cannot be loaded.";
-  if (!host.token) return "Enter the facilitator password to load the teams and to open a room.";
+  if (!host.token) return "Enter the facilitator password to see the players and run the game.";
   if (error) return "Could not read Google Sheets: " + error;
-  if (loading && !at) return "Loading the teams from Google Sheets…";
-  if (!host.room) return "Connected. Open a room below.";
+  if (loading && !at) return "Loading from Google Sheets…";
   const time = at ? new Date(at).toLocaleTimeString("en-GB", {timeZone: "Europe/Moscow"}) : "";
+  if (!host.room) return (at ? "Updated " + time + " Moscow time · " : "") + "Connected.";
   const withData = TEAMS.filter(team => host.records[team]).length;
-  const problems = Object.entries(host.refresh.problems).map(([team, message]) => " Table " + team + " could not be read (" + message + ").").join("");
-  return (at ? "Updated " + time + " Moscow time · " : "") + withData + " of " + TEAMS.length + " tables have data." + problems;
+  const problems = Object.entries(host.refresh.problems).map(([team, message]) => " Team " + team + " could not be read (" + message + ").").join("");
+  return (at ? "Updated " + time + " Moscow time · " : "") + withData + " of " + TEAMS.length + " teams have data." + problems;
 }
 
 function connectionHtml() {
@@ -2609,32 +2658,48 @@ function connectionHtml() {
     <div class="pv-actions pv-file-actions">${button("Refresh now", "host-refresh")}</div></div>`;
 }
 
-function startForm() {
-  const today = moscowDate.format(new Date());
-  const planned = Date.parse(today + "T18:30+03:00");
-  const date = moscowDate.format(new Date(planned > trueNow() ? planned : planned + 86_400_000));
-  const time = host.start || (host.room ? moscowDate.format(roomStart(host.room)) + "T" + interval(host.room, 0, 1).slice(0, 5) : date + "T18:30");
-  return `<div class="pv-panel">
-    <label class="pv-field">R1 start · Moscow time
-      <input class="pv-input" type="datetime-local" data-host="start" value="${esc(time)}">
-    </label><p class="pv-inline-note pv-block-gap">The opening starts 20 minutes before R1. A room sets the timetable and draws four unique markets.</p>
-    <div class="pv-actions pv-file-actions">${button("Create a new room", "host-create", "primary")}</div>
-  </div>`;
+// ---- The players: join, form teams, start -----------------------------------------------------------
+
+function playersSummary() {
+  const players = host.players;
+  const international = players.filter(player => player.international).length;
+  const ready = players.filter(player => player.ready).length;
+  if (!host.state) return "Waiting for the first answer from Google Sheets.";
+  if (host.state === "lobby") return players.length ? players.length + " players joined (" + international + " international). Form the teams when everyone is in." :
+    "No players yet. Players open the game page, press “Join your team” and enter their name. They never see the sheet.";
+  if (host.state === "formed") return "Teams are formed. " + ready + " of " + players.length + " players are ready. You can shuffle again until you start.";
+  return "The game is running. " + players.length + " players in four teams.";
+}
+
+function teamCards() {
+  return TEAMS.map(team => {
+    const members = host.players.filter(player => player.team === team);
+    const market = host.room ? MARKETS[marketForTable(host.room, team)] : null;
+    return `<div class="pv-panel"><span class="pv-mono">Team ${team}</span><strong>${market ? esc(market.name) : "Market is drawn at the start"}</strong>
+      <small>${members.length} ${members.length === 1 ? "player" : "players"}</small>
+      <ul class="pv-team-list">${members.map(player => "<li>" + esc(player.name) + (player.international ? " · intl" : "") + (player.captain ? " · captain" : "") + (player.ready ? " ✔" : "") + "</li>").join("")}</ul></div>`;
+  }).join("");
+}
+
+function playersHtml() {
+  const {state, players} = host;
+  const delays = [0, 2, 5, 10].map(minutes => '<option value="' + minutes + '"' + (host.delay === minutes ? " selected" : "") + ">" + (minutes ? "in " + minutes + " minutes" : "right now") + "</option>").join("");
+  const lobby = state === "lobby" ? (players.length ? '<ul class="pv-team-list">' + players.map(player => "<li>" + esc(player.name) + (player.international ? " · international" : "") + "</li>").join("") + "</ul>" : "") : "";
+  const actions = state === "started" ? button("Start a new game", "host-reset", "text") :
+    [button(state === "formed" ? "Shuffle the teams again" : "Form teams", "host-form", state === "formed" ? "" : "primary"),
+      state === "formed" ? `<label class="pv-field pv-inline-field">R1 opens<select class="pv-input" data-host="delay">${delays}</select></label>` + button("Start the game", "host-start", "primary") : "",
+      button("Add demo players (test)", "host-demo", "text"), button("Start a new game", "host-reset", "text")].join("");
+  return `<div class="pv-panel pv-block-gap" data-host-players><h3>Players and teams</h3>
+    <p class="pv-inline-note" data-host-players-text>${esc(playersSummary())}</p>${lobby}
+    ${state === "formed" || state === "started" ? '<div class="pv-host-assignments pv-block-gap">' + teamCards() + "</div>" : ""}
+    <div class="pv-actions pv-file-actions">${state ? actions : ""}</div></div>`;
 }
 
 function activeRoom() {
-  const assignments = TEAMS.map(team => {
-    const market = MARKETS[marketForTable(host.room, team)];
-    return "<div class=\"pv-panel\"><span class=\"pv-mono\">Table " + team + "</span><strong>" + esc(market.name) +
-      "</strong><small>" + esc(market.city) + "</small></div>";
-  }).join("");
-  return `<div class="pv-record pv-checkpoint"><p class="pv-mono">Room code</p><h3>${esc(host.room)}</h3>
-    <p>Show this code and the table assignment. Each team joins with one device and its own table number.</p></div>
-    <div class="pv-host-assignments">${assignments}</div>
-    <div class="pv-panel pv-block-gap">
-      <div class="pv-clock" data-host-clock><span data-host-phase></span><strong data-host-time></strong></div>
-      <p data-host-cue class="pv-block-gap"></p>
-    </div>`;
+  return `<div class="pv-panel pv-block-gap">
+    <div class="pv-clock" data-host-clock><span data-host-phase></span><strong data-host-time></strong></div>
+    <p data-host-cue class="pv-block-gap"></p>
+  </div>`;
 }
 
 let checklistPhase = null;
@@ -2648,17 +2713,17 @@ function progressText(phase, now) {
 }
 
 function checklistHtml(now) {
-  const {phase, steps, next} = hostChecklist({room: host.room, now, grades: host.panel.grades, records: host.records, joined: host.panel.joined});
+  const {phase, steps, next} = hostChecklist({room: host.room, now, grades: host.panel.grades, records: host.records});
   checklistPhase = phase.id;
   const marks = {done: "✔", now: "●", later: "○"};
   const extras = {
-    joined: '<label class="pv-check-line"><input type="checkbox" data-host="joined"' + (host.panel.joined ? " checked" : "") + "> All four tables are in</label>",
     game: '<p class="pv-inline-note" data-host-progress>' + esc(progressText(phase, now)) + "</p>",
     files: button("Refresh now", "host-refresh"),
+    sheets: button("Send scores to Google Sheets", "host-scores-sync"),
     ranking: button("Export scores CSV", "host-scores")
   };
   const items = steps.map((step, index) => `<li data-state="${step.state}"><span class="pv-step-mark" aria-hidden="true">${marks[step.state]}</span>
-    <div><strong>${index + 1}. ${esc(step.title)}</strong>${step.state === "now" ? ' <span class="pv-mono">now</span>' : ""}<p>${esc(step.detail)}</p>${step.state === "done" && !["game", "joined"].includes(step.id) ? "" : extras[step.id] ?? ""}</div></li>`).join("");
+    <div><strong>${index + 1}. ${esc(step.title)}</strong>${step.state === "now" ? ' <span class="pv-mono">now</span>' : ""}<p>${esc(step.detail)}</p>${step.state === "done" && !["game", "sheets"].includes(step.id) ? "" : extras[step.id] ?? ""}</div></li>`).join("");
   return `<div class="pv-panel pv-checklist" data-host-checklist><h3>What’s next</h3>
     <p class="pv-next"><strong>${esc(next)}</strong></p><ol class="pv-steps">${items}</ol></div>`;
 }
@@ -2675,9 +2740,9 @@ function scoresTable() {
   const ranked = rows.filter(row => row.key).sort((a, b) => compareScores(a.key, b.key));
   const tied = complete ? ranked.filter(row => compareScores(row.key, ranked[0].key) === 0) : [];
   const heading = !complete ? (counted ? "Complete all three expert sheets and wait for every team’s data from Google Sheets to rank the proposals." :
-      "Complete all three expert sheets for every table to rank the proposals.") :
-    tied.length > 1 ? "The Chair decides between tables " + tied.map(row => row.team).join(", ") + " and gives a rubric-based reason." :
-      "First launch priority · Table " + ranked[0].team + " · " + MARKETS[marketForTable(host.room, ranked[0].team)].name;
+      "Complete all three expert sheets for every team to rank the proposals.") :
+    tied.length > 1 ? "The Chair decides between teams " + tied.map(row => row.team).join(", ") + " and gives a rubric-based reason." :
+      "First launch priority · Team " + ranked[0].team + " · " + MARKETS[marketForTable(host.room, ranked[0].team)].name;
   const number = value => (value === null || value === undefined ? "Pending" : value.toFixed(1));
   const body = (complete ? ranked : rows).map(row => "<tr><td>" + esc(MARKETS[marketForTable(host.room, row.team)].name) + "</td>" +
     [row.jury?.written, row.jury?.oral].map(value => "<td>" + number(value) + "</td>").join("") +
@@ -2687,7 +2752,15 @@ function scoresTable() {
     ${counted ? '<p class="pv-inline-note">Final = ' + Math.round((1 - tuning().gameShare) * 100) + "% experts + " + Math.round(tuning().gameShare * 100) + "% game result. The game result comes from the team data in Google Sheets.</p>" : ""}
     <table class="pv-scores"><thead><tr><th scope="col">Market</th><th scope="col">Written</th><th scope="col">Oral</th>${counted ? '<th scope="col">Game</th><th scope="col">Final</th>' : '<th scope="col">Total</th>'}</tr></thead>
     <tbody>${body}</tbody></table>
-    <div class="pv-actions pv-file-actions">${button("Export scores CSV", "host-scores")}${button("Export for Excel", "host-scores-ru")}</div></div>`;
+    <div class="pv-actions pv-file-actions">${button("Send scores to Google Sheets", "host-scores-sync", "primary")}${button("Export scores CSV", "host-scores")}${button("Export for Excel", "host-scores-ru")}</div>
+    <p class="pv-inline-note" data-host-scores-sent>${esc(scoresSentText())}</p></div>`;
+}
+
+function scoresSentText() {
+  const {at, error} = host.scoresSent;
+  if (error) return "The scores could not be sent: " + error;
+  return at ? "Scores sheet updated at " + new Date(at).toLocaleTimeString("en-GB", {timeZone: "Europe/Moscow"}) + " Moscow time. It updates by itself after each change." :
+    "The Scores sheet fills by itself once you mark an expert sheet. You can also press the button.";
 }
 
 function journalHtml(team) {
@@ -2708,12 +2781,12 @@ function judgeTable(team) {
       '<label class="pv-panel pv-field"><span><input type="checkbox" data-host="complete" data-expert="' + expert + '"' +
       (grade.complete ? " checked" : "") + '> This expert sheet is complete</span></label>');
   }).join("");
-  const teamOptions = TEAMS.map(value => '<option value="' + value + '"' + (team === value ? " selected" : "") + ">Table " + value +
+  const teamOptions = TEAMS.map(value => '<option value="' + value + '"' + (team === value ? " selected" : "") + ">Team " + value +
     " · " + esc(MARKETS[marketForTable(host.room, value)].name) + "</option>").join("");
   return `<div class="pv-panel">
     <h3>Strategy and hearing score sheets</h3>
     <p>Team data arrives from Google Sheets on its own. Review written checks during the game and preparation. Score the pitch and common answer separately. Three experts submit their four independent checks for each criterion.</p>
-    <label class="pv-field pv-block-gap">Review table<select class="pv-input" data-host="selected">${teamOptions}</select></label>
+    <label class="pv-field pv-block-gap">Review team<select class="pv-input" data-host="selected">${teamOptions}</select></label>
     <div data-host-journal>${journalHtml(team)}</div>
     ${sheets}
   </div>`;
@@ -2724,8 +2797,8 @@ function guide(room) {
     ["<li><strong>", esc(interval(room, item.from, item.to)), "</strong><span>", esc(item.label), "</span></li>"].join("")).join("");
   return disclosure("Facilitator script and timetable", `
     <div class="pv-wording">
-      <h3>20 minutes before R1</h3>
-      <p>Make four mixed tables. If the roster includes exchange students, privately distribute them as evenly as possible. Keep the tables balanced and run the case in English. Give the group its table number and read the Board brief without assigning student positions.</p>
+      <h3>Before R1</h3>
+      <p>Ask everyone to open the game page, press “Join your team” and enter their name. When all are in, press “Form teams”: the randomizer keeps four teams balanced and spreads the international students evenly. Press “Shuffle the teams again” for a new draw. Players see their team number and press “I’m ready”; you press “Start the game”. Each team plays on one device, the captain’s. Run the case in English and read the Board brief without assigning student positions.</p>
       <p>Explain credits with a sample. With 5 practice credits, buying an interview for 2 leaves 3, so a response costing 4 is unavailable. Every real team starts with 9.</p>
       <p>Explain the deadline. A complete, affordable browser draft locks when time runs out. The free default is applied if any required draft field is missing. Keep printed round cards and one blank ledger per team for an offline fallback.</p>
       ${facts([["Expert 1","Open the session, project the clock, warn with two minutes left and time each pitch."],
@@ -2740,9 +2813,8 @@ function guide(room) {
 }
 
 function renderHost(now = trueNow()) {
-  return stage("Facilitator dashboard", "Seminar operations",
-    connectionHtml() + (host.room ? activeRoom() + checklistHtml(now) + guide(host.room) + '<div class="pv-block-gap">' + scoresTable() + judgeTable(host.selected) + "</div>" : "") +
-    '<div class="pv-block-gap">' + (host.room ? disclosure("Set up another room", startForm()) : startForm()) + "</div>", "review");
+  const played = host.room ? activeRoom() + checklistHtml(now) + guide(host.room) + '<div class="pv-block-gap">' + scoresTable() + judgeTable(host.selected) + "</div>" : "";
+  return stage("Facilitator dashboard", "Seminar operations", connectionHtml() + playersHtml() + played, "review");
 }
 
 function hostClock(root, now) {
@@ -2761,7 +2833,7 @@ function hostClock(root, now) {
     R7: "Each team chooses what to fund and states the condition for its next commitment.",
     BREAK: "Nothing to export: the data is in Google Sheets. Teams can reopen the page after the break.",
     R6: bulletin ? BULLETINS.A : BULLETINS.B + " Each team sees its customer-specific note.",
-    PREP: "Read the Board Briefs in the Brief sheet, finish the written checks and give teams the pitch order.",
+    PREP: "Read the Board Briefs at the bottom of each Team sheet, finish the written checks and give teams the pitch order.",
     PITCH: "One four-minute slot per team. " + QUESTION,
     DEBRIEF: "Reconcile all scores. Announce the selected next investment and its live-launch condition.",
     END: "Session complete. Export the ranking and keep the team journals."
@@ -2785,56 +2857,103 @@ function exportScores(russianExcel = false) {
     scoresCsv(host.room, host.panel.grades, {russianExcel, records: host.records}), "text/csv;charset=utf-8");
 }
 
-async function handleHostAction(id, target, ui) {
-  if (id === "host-create") {
-    const start = target.closest(".pv-panel").querySelector('[data-host="start"]').value;
-    const instant = Date.parse(start + "+03:00");
-    if (!start || !Number.isFinite(instant)) throw new Error("Set a valid R1 start in Moscow time.");
-    const random = crypto.getRandomValues(new Uint32Array(2));
-    const next = makeRoom(instant, random[0] % 24, (random[1] % 46656).toString(36).padStart(3, "0"));
-    if (roomStart(next) === null) throw new Error("Select a date between 2025 and 2099.");
-    if (host.room && !await ui.ask("Switch to a new room?", "The teams will join the new room. The data of the current room stays in the sheet.", "Create room")) return;
-    // With a sheet, the room is published there so that teams only pick their table.
-    if (syncEnabled()) {
-      if (!host.token) throw new Error("Enter the facilitator password first.");
-      await publishRoom(next, instant, host.token);
-    }
-    host.room = next;
+function requireToken() {
+  if (!host.token) throw new Error("Enter the facilitator password first.");
+}
+
+// A new internal game number: it carries the R1 start and which team gets which market. Nobody types it.
+function newGameNumber(startAt) {
+  const random = crypto.getRandomValues(new Uint32Array(2));
+  return makeRoom(startAt, random[0] % 24, (random[1] % 46656).toString(36).padStart(3, "0"));
+}
+
+async function sendScores() {
+  if (!host.token || !host.room) return;
+  try {
+    await pushScores(host.token, scoresSheetTable(host.room, host.panel.grades, host.records));
+    host.scoresSent = {at: trueNow(), error: ""};
+  } catch (error) {
+    host.scoresSent = {...host.scoresSent, error: error.message || "no answer"};
+  }
+  const note = document.querySelector("#one-market-first [data-host-scores-sent]");
+  if (note) note.textContent = scoresSentText();
+}
+
+let scoresTimer = null;
+function scheduleScores() {
+  if (!host.token || !host.room) return;
+  clearTimeout(scoresTimer);
+  scoresTimer = setTimeout(() => void sendScores(), 4000);
+}
+
+function applyRoster(roster) {
+  host.state = roster.state;
+  host.players = roster.players;
+  if (roster.room !== host.room) {
+    host.room = roster.state === "started" && roomStart(roster.room) !== null ? roster.room : "";
     host.records = {};
-    host.start = start;
     host.selected = 1;
-    host.panel = freshPanel();
-    storePanel();
-    ui.announce("Room created. Show the room code and table numbers to participants.");
-    ui.render("#omf-stage-title");
-    void refreshHostData(ui);
-  } else if (id === "host-refresh") await refreshHostData(ui);
+    if (host.room) loadPanel(host.room);
+    else host.panel = freshPanel();
+  }
+}
+
+async function handleHostAction(id, target, ui) {
+  if (id === "host-refresh") await refreshHostData(ui);
   else if (id === "host-scores") exportScores();
   else if (id === "host-scores-ru") exportScores(true);
+  else if (id === "host-scores-sync") {
+    requireToken();
+    await sendScores();
+    if (host.scoresSent.error) throw new Error(host.scoresSent.error);
+    ui.announce("The Scores sheet is updated.");
+  } else if (id === "host-demo") {
+    requireToken();
+    applyRoster(await hostCommand("demo", host.token, {count: 8}));
+    ui.announce("Added 8 demo players. They are not real: use “Start a new game” to remove them.");
+    ui.render("#omf-stage-title");
+  } else if (id === "host-form") {
+    requireToken();
+    if (host.state === "formed" && !await ui.ask("Shuffle the teams again?", "The players’ teams change and they have to press “I’m ready” again.", "Shuffle")) return;
+    applyRoster(await hostCommand("form", host.token));
+    ui.announce("Teams formed. The players see their team number on their screens.");
+    ui.render("#omf-stage-title");
+  } else if (id === "host-start") {
+    requireToken();
+    const waiting = host.players.filter(player => !player.ready).length;
+    if (waiting && !await ui.ask("Start the game?", waiting + " of " + host.players.length + " players have not pressed “I’m ready”. Start anyway?", "Start the game")) return;
+    const startAt = (host.delay ? Math.ceil((trueNow() + host.delay * 60_000) / 60_000) : Math.floor(trueNow() / 60_000)) * 60_000;
+    const next = newGameNumber(startAt);
+    if (roomStart(next) === null) throw new Error("The clock is outside 2025–2099.");
+    applyRoster(await hostCommand("start", host.token, {room: next, start: new Date(startAt).toISOString(), markets: TEAMS.map(team => marketForTable(next, team))}));
+    ui.announce("The game starts. Players’ screens open by themselves.");
+    ui.render("#omf-stage-title");
+    void refreshHostData(ui);
+  } else if (id === "host-reset") {
+    requireToken();
+    if (!await ui.ask("Start a new game?", "A copy of the spreadsheet is saved in your Drive. Then all players, teams and results are removed and the players have to join again.", "Start a new game")) return;
+    applyRoster(await hostCommand("reset", host.token));
+    ui.announce("A new game is ready. A copy of the previous one was saved.");
+    ui.render("#omf-stage-title");
+  }
 }
 
 function updateHostField(input, render) {
   const {host: field} = input.dataset;
-  if (field === "start") {
-    host.start = input.value;
+  if (field === "delay") {
+    host.delay = Number(input.value) || 0;
     return;
   }
   if (field === "token") {
     host.token = input.value.trim();
     putStored(hostKey("token"), host.token);
-    if (render) void refreshHostData({});
+    if (render) void refreshHostData({render});
     return;
   }
   if (!host.room || !render) return;
   if (field === "selected") {
     host.selected = Number(input.value);
     render();
-    return;
-  }
-  if (field === "joined") {
-    host.panel.joined = input.checked;
-    storePanel();
-    refreshChecklist();
     return;
   }
   if (field !== "check" && field !== "complete") return;
@@ -2856,17 +2975,21 @@ function updateHostField(input, render) {
   const previous = input.closest(".pv-stage-body").querySelector(".pv-scores").closest(".pv-panel");
   previous.outerHTML = scoresTable();
   refreshChecklist();
-}
-
-function replaceIn(selector, html) {
-  const element = document.querySelector("#one-market-first " + selector);
-  if (element) element.outerHTML = html;
+  scheduleScores();
 }
 
 // What changed in the sheet shows without redrawing the page (the experts' open sheets stay open).
 function refreshHostViews() {
   const text = document.querySelector("#one-market-first [data-host-connection-text]");
   if (text) text.textContent = connectionText();
+  const players = document.querySelector("#one-market-first [data-host-players]");
+  if (players) {
+    const next = document.createElement("div");
+    next.innerHTML = playersHtml();
+    const fresh = next.firstElementChild;
+    // The page is redrawn only when the roster changed, so an open drop-down is not closed under the facilitator's hand.
+    if (fresh.innerHTML !== players.innerHTML) players.replaceWith(fresh);
+  }
   if (!host.room) return;
   refreshChecklist();
   const ranking = document.querySelector("#one-market-first .pv-scores");
@@ -2875,28 +2998,34 @@ function refreshHostViews() {
   if (journal) journal.innerHTML = journalHtml(host.selected);
 }
 
-// Reads every team of the open room from the sheet.
-async function refreshHostData() {
-  if (!syncEnabled() || !host.room || !host.token || host.refresh.loading) {
+// Reads the players and, once the game runs, every team from the sheet.
+async function refreshHostData(ui = {}) {
+  if (!syncEnabled() || !host.token || host.refresh.loading) {
     refreshHostViews();
     return;
   }
   host.refresh.loading = true;
   const problems = {};
+  const before = host.room;
   try {
-    const data = await fetchRoom(host.room, host.token);
-    const records = {};
-    for (const payload of data.teams) {
-      if (!(payload.decisions.length || payload.notes.length || payload.brief)) continue;
-      try { records[payload.team] = recordFromPayload(payload, marketForTable(host.room, payload.team)); }
-      catch (error) { problems[payload.team] = error.message; }
+    applyRoster(await fetchRoster(host.token));
+    if (host.room) {
+      const data = await fetchRoom(host.token);
+      const records = {};
+      for (const payload of data.teams) {
+        if (!(payload.decisions.length || payload.notes.length || payload.brief)) continue;
+        try { records[payload.team] = recordFromPayload(payload, marketForTable(host.room, payload.team)); }
+        catch (error) { problems[payload.team] = error.message; }
+      }
+      host.records = records;
     }
-    host.records = records;
     host.refresh = {at: trueNow(), error: "", loading: false, problems};
   } catch (error) {
     host.refresh = {...host.refresh, error: error.message || "no answer", loading: false, problems};
   }
-  refreshHostViews();
+  // The page gains its clock, checklist and score sheets (or loses them) when a game starts or a new one is prepared.
+  if (host.room !== before && ui.render) ui.render();
+  else refreshHostViews();
 }
 return { renderHost, hostClock, handleHostAction, updateHostField, refreshHostData };
 })();
@@ -2905,21 +3034,26 @@ return { renderHost, hostClock, handleHostAction, updateHostField, refreshHostDa
 await (async () => {
 const { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION, PROBLEMS } = __omf_scenario;
 const { TEAMS, SCHEDULE, OUTCOMES, makeRoom, marketForTable, roomStart, phaseAt, replay, optionsFor, pendingFact, settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord, contentMismatch, gameScore } = __omf_rules;
-const { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot, activeTeam, newId, newRecord, withSaveLock, knownTable, SaveError, recoveryOptions, requestPersistence, readConfigCache, writeConfigCache } = __omf_storage;
+const { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot, activeTeam, newId, newRecord, withSaveLock, knownTable, SaveError, recoveryOptions, requestPersistence, readPlayer, writePlayer } = __omf_storage;
 const { esc, button, disclosure, facts, stage, interval, countdown } = __omf_presentation;
 const { renderHost, handleHostAction, updateHostField, hostClock, refreshHostData } = __omf_host;
 const { trueNow, clockStatus, syncClock } = __omf_clock;
 const { gameProgress } = __omf_progress;
 const { tuning } = __omf_tuning;
-const { configureSync, flushSync, syncSummary, syncEnabled, fetchConfig, fetchTeam, recordFromPayload } = __omf_sync;
+const { configureSync, flushSync, syncSummary, syncEnabled, setParticipant, joinGame, fetchMe, setReady, claimCaptain, fetchTeam, recordFromPayload } = __omf_sync;
 const root = document.querySelector("#one-market-first");
 const ui = Object.fromEntries([...root.querySelectorAll("[data-ui]")].map(element => [element.dataset.ui, element]));
 const view = {
-  page: "home", entryMode: "live", room: "", team: 1, market: "indonesia", record: null,
-  pageKey: "", recovery: null, config: {room: "", start: "", error: "", loading: false}, practiceReview: null, notice: "", readingFor: "team", busy: false, writes: Promise.resolve()
+  page: "home", entryMode: "live", team: 1, market: "indonesia", record: null,
+  pageKey: "", recovery: null, practiceReview: null, notice: "", readingFor: "team", busy: false, writes: Promise.resolve(),
+  // The person at this device (hosted game): who they are and what the sheet last said about their team.
+  player: null, me: null, meKey: "", pendingId: "", stayHome: false
 };
 configureSync(root.dataset.syncUrl);
 const marketList = Object.entries(MARKETS);
+view.player = hosted() ? readPlayer() : null;
+if (view.player) setParticipant(view.player.id);
+if (!hosted()) view.entryMode = "practice";
 const scheduledRoom = makeRoom(Date.UTC(2026, 0, 1, 15, 30), 0, "000");
 
 function announce(message, tone = "info") {
@@ -2950,50 +3084,78 @@ function sourceLinks(ids) {
 }
 
 function teamSelector() {
-  return '<label class="pv-field">Assigned table<select class="pv-input" data-entry="team">' +
-    TEAMS.map(team => '<option value="' + team + '"' + (view.team === team ? " selected" : "") + ">Table " + team + "</option>").join("") +
+  return '<label class="pv-field">Team<select class="pv-input" data-entry="team">' +
+    TEAMS.map(team => '<option value="' + team + '"' + (view.team === team ? " selected" : "") + ">Team " + team + "</option>").join("") +
     "</select></label>";
 }
 
-// The game runs against a Google Sheet when the page carries its address. Then the facilitator's room comes
-// from the sheet and a team only picks its table. Without an address (local trials) the old entry stays.
+// The game runs against a Google Sheet when the page carries its address. Then players sign up, the facilitator forms
+// the teams and starts the game, and nobody types a room code. Without an address the page only offers practice.
 function hosted() {
   return syncEnabled();
 }
 
-function practiceAllowed() {
-  return !hosted() || location.hash === "#practice";
+function playerList(members) {
+  return '<ul class="pv-team-list">' + members.map(member => "<li>" + esc(member.name) + (member.captain ? ' <span class="pv-mono">captain</span>' : "") +
+    (member.ready ? ' <span class="pv-mono">ready</span>' : "") + "</li>").join("") + "</ul>";
+}
+
+function signUpForm() {
+  return `<form data-form="signup">
+      <div class="pv-entry-fields">
+        <label class="pv-field">Your name<input class="pv-input" name="name" autocomplete="given-name" maxlength="40" required placeholder="Name and first letter of surname"></label>
+        <fieldset class="pv-field pv-radios"><legend>Are you an international student?</legend>
+          <label><input type="radio" name="international" value="yes" required> Yes, international</label>
+          <label><input type="radio" name="international" value="no"> No, not international</label></fieldset>
+      </div>
+      <p class="pv-inline-note pv-block-gap">The facilitator will form the teams at random and keep a balanced mix. You will see your team number here.</p>
+      <div class="pv-entry-foot"><div class="pv-actions"><button type="submit" class="pv-button pv-button--primary">Join your team</button></div></div>
+    </form>`;
+}
+
+// What the player sees while the teams are not playing yet, and after: always the same card, driven by the sheet.
+function playerPanel() {
+  const me = view.me;
+  if (!view.player) return signUpForm();
+  if (!me) return '<p class="pv-inline-note" data-assigned>Connecting to the game…</p>';
+  if (!me.team) {
+    return `<div class="pv-record pv-checkpoint"><p class="pv-mono">You are in</p><h3>${esc(view.player.name)}</h3>
+      <p>${me.players} ${me.players === 1 ? "player has" : "players have"} joined. The facilitator will form the teams shortly: stay on this page.</p></div>`;
+  }
+  const market = me.state === "started" && roomStart(me.room) !== null ? MARKETS[marketForTable(me.room, me.team)] : null;
+  const running = me.state === "started";
+  const captain = me.members.find(member => member.captain);
+  const lines = me.captain ?
+    "You are the captain: the team plays on this device. Sit together and decide together." :
+    "Your captain " + (captain ? captain.name : "") + " plays for the team on their device. Sit together and decide together.";
+  const actions = running ?
+    (me.captain ? button(view.stayHome ? "Back to the game" : "Open the game", "enter-game", "primary") : "") :
+    button(me.ready ? "Not ready yet" : "I’m ready", "ready", me.ready ? "text" : "primary");
+  return `<div class="pv-record pv-checkpoint"><p class="pv-mono">Your team</p><h3>Team ${me.team}${market ? " · " + esc(market.name) : ""}</h3>
+      <p>${esc(lines)}</p>
+      <p>${running ? (me.captain ? "The game is running." : "The game is running. Your captain has the screen.") : me.ready ? "You are ready. The facilitator starts the game when everyone is." : "Press the button when you are ready. The facilitator starts the game when everyone is."}</p></div>
+    <div class="pv-panel"><h3>Your teammates</h3>${playerList(me.members)}</div>
+    <div class="pv-entry-foot"><div class="pv-actions">${actions}
+      ${me.captain ? "" : button("Play on this device instead", "captain", "text")}</div></div>`;
 }
 
 function entryPanel() {
-  if (hosted() && view.entryMode === "live") {
-    const {room, error, loading} = view.config;
-    const market = room && roomStart(room) !== null ? MARKETS[marketForTable(room, view.team)] : null;
-    const note = loading ? "Checking which room the facilitator opened…" : error ? esc(error) : !room ? "The facilitator has not opened a room yet." :
-      "Choose the table the facilitator gave you." + (market ? " Your market is " + esc(market.name) + "." : "");
-    return `<form data-form="join">
-        <div class="pv-entry-fields">${teamSelector()}</div>
-        <p class="pv-inline-note pv-block-gap" data-assigned>${note}</p>
-        <div class="pv-entry-foot"><div class="pv-actions">
-          <button type="submit" class="pv-button pv-button--primary"${room ? "" : " disabled"}>Open team dashboard</button>
-          ${!room || error ? button("Check again", "config-retry", "") : ""}
-        </div></div>
-      </form>`;
-  }
-  const room = view.room.toUpperCase().trim();
-  const assigned = roomStart(room) === null ? null : MARKETS[marketForTable(room, view.team)];
+  if (hosted() && view.entryMode === "live") return `<div class="pv-entry-body" data-assigned>${playerPanel()}${location.hash === "#practice" ? '<div class="pv-actions pv-file-actions">' + button("Practice", "entry-mode", "text") + "</div>" : ""}</div>`;
   return `<form data-form="join">
         <div class="pv-entry-fields">
-          ${view.entryMode === "live" ? `<label class="pv-field">Room code<input class="pv-input" name="room" data-entry="room" value="${esc(view.room)}" autocapitalize="characters" autocomplete="off" maxlength="23" placeholder="OMF-…"></label>
-          ${teamSelector()}` : `<label class="pv-field">Practice market<select class="pv-input" data-entry="market">${marketList.map(([id, market]) =>
-            `<option value="${id}"${view.market === id ? " selected" : ""}>${market.name}</option>`).join("")}</select></label>${teamSelector()}`}
+          <label class="pv-field">Practice market<select class="pv-input" data-entry="market">${marketList.map(([id, market]) =>
+            `<option value="${id}"${view.market === id ? " selected" : ""}>${market.name}</option>`).join("")}</select></label>${teamSelector()}
         </div>
-        <p class="pv-inline-note pv-block-gap" data-assigned>${assigned && view.entryMode === "live" ? "Your assigned market is " + esc(assigned.name) + "." : "Use the table number assigned by the facilitator."}</p>
+        <p class="pv-inline-note pv-block-gap">Practice alone: nothing is sent anywhere.</p>
         <div class="pv-entry-foot"><div class="pv-actions">
-          <button type="submit" class="pv-button pv-button--primary">${view.entryMode === "live" ? "Open team dashboard" : "Open practice dashboard"}</button>
-          ${practiceAllowed() ? button(view.entryMode === "live" ? "Practice without a room" : "Back to classroom", "entry-mode", "text") : ""}
+          <button type="submit" class="pv-button pv-button--primary">Open practice dashboard</button>
+          ${hosted() ? button("Back to the game", "entry-mode", "text") : ""}
         </div></div>
       </form>`;
+}
+
+function entryTitle() {
+  return hosted() && view.entryMode === "live" ? (view.player ? "Your team" : "Join your team") : "Practice";
 }
 
 function homeScreen() {
@@ -3002,7 +3164,7 @@ function homeScreen() {
       <span class="pv-kicker pv-mono">Revolut APAC case</span>
       <h1 id="omf-title" tabindex="-1"><span>One Market</span><span>First</span></h1>
       <p>Four consulting teams. One expansion mandate. Make the case for funding your market first.</p>
-      ${button("Join your table", "jump-entry", "primary")}
+      ${button("Join your team", "jump-entry", "primary")}
     </div><div class="pv-hero-art" aria-hidden="true">
       <span class="pv-art-code pv-art-code--top pv-mono">APAC · Market entry</span>
       <svg viewBox="0 0 580 350" preserveAspectRatio="xMidYMid slice" fill="none">
@@ -3039,27 +3201,9 @@ function homeScreen() {
     <div class="pv-tape pv-mono"><span><b>04</b><small>Markets</small></span><span><b>${String(CONFIG.budget).padStart(2, "0")}</b><small>Credits per team</small></span><span><b>01</b><small>Funding mandate</small></span></div>
   </section>
   <section class="pv-entry" aria-labelledby="omf-entry-title">
-    <div class="pv-section-head"><h2 id="omf-entry-title" tabindex="-1">${view.entryMode === "live" ? "Join the classroom" : "Practice without a room"}</h2></div>
+    <div class="pv-section-head"><h2 id="omf-entry-title" tabindex="-1">${entryTitle()}</h2></div>
     <div class="pv-entry-panel">${entryPanel()}</div>
   </section>`;
-}
-
-// Which room the facilitator opened: read from the sheet, remembered for a reload without a connection.
-async function loadConfig() {
-  if (!hosted()) return;
-  view.config = {...view.config, loading: true, error: ""};
-  if (view.page === "home") render();
-  try {
-    const config = await fetchConfig();
-    view.config = {...config, error: "", loading: false};
-    writeConfigCache(config);
-  } catch (error) {
-    const cached = readConfigCache();
-    view.config = {room: cached?.room ?? "", start: cached?.start ?? "", loading: false,
-      error: "Could not reach Google Sheets" + (cached?.room ? "; using the room remembered on this device" : "") + ". " + (error.message || "")};
-  }
-  if (view.room !== view.config.room) view.room = view.config.room;
-  if (view.page === "home") render();
 }
 
 function renderMaterials() {
@@ -3153,7 +3297,7 @@ function meterHtml(record) {
 function stickyBar(record, state, phase, path) {
   const market = MARKETS[record.market];
   return `<div class="pv-sticky" data-sticky><div class="pv-bar">
-      <div class="pv-bar-id"><p class="pv-mono">Table ${record.team} · ${record.mode === "practice" ? "Practice" : esc(record.room)}</p>
+      <div class="pv-bar-id"><p class="pv-mono">Team ${record.team}${record.mode === "practice" ? " · Practice" : ""}</p>
         <h1 class="pv-board-title">${esc(market.name)}</h1><p class="pv-board-context">${esc(market.city)} · ${market.currency}</p></div>
       <div class="pv-bar-stage"><p class="pv-mono" data-stage-name>${esc(stageLabel(phase))}</p>
         <div class="pv-clock" data-clock hidden><span data-clock-label></span><strong data-clock-time></strong></div></div>
@@ -3335,8 +3479,8 @@ function recoveryScreen() {
     (option.rounds ? "decisions locked through " + ROUNDS[option.rounds - 1].id : "no decisions locked yet") + " " +
     button("Restore this copy", "recover-pick", "", 'data-index="' + index + '"') + "</li>").join("") + "</ul>" :
     "<p>No readable copy was found in this browser.</p>";
-  return stage("This saved game could not be opened", "Table " + team + " · " + (room === "PRACTICE" ? "Practice" : room),
-    "<p>" + esc(message) + "</p><p>Restore the newest readable copy below" + (hosted() && room !== "PRACTICE" ? " or load the table from Google Sheets" : "") +
+  return stage("This saved game could not be opened", "Team " + team + (room === "PRACTICE" ? " · Practice" : ""),
+    "<p>" + esc(message) + "</p><p>Restore the newest readable copy below" + (hosted() && room !== "PRACTICE" ? " or load the team from Google Sheets" : "") +
     ". The damaged save stays untouched until you choose.</p>" + list +
     '<div class="pv-file-actions pv-actions">' + (hosted() && room !== "PRACTICE" ? button("Load from Google Sheets", "recover-sheet", "primary") : "") + button("Back to home", "home") + "</div>", "event");
 }
@@ -3415,38 +3559,39 @@ function showTeam(record, message = "") {
   void triggerSync();
 }
 
-async function join() {
-  const live = view.entryMode === "live";
-  const room = live ? (hosted() ? view.config.room : view.room.trim().toUpperCase()) : "PRACTICE";
-  if (live && (!room || roomStart(room) === null)) throw new Error(hosted() ? "The facilitator has not opened a room yet." : "Enter the room code shown by the facilitator.");
-  const market = live ? marketForTable(room, view.team) : view.market;
+// Opens the team's dashboard. In the hosted game the room, team and market come from the sheet; in practice and in
+// the older classroom entry they come from the form. `auto` means no one pressed a button: a problem is reported, not asked about.
+async function openTable({room, team, market, mode, auto = false}) {
+  view.team = team;
+  const live = mode === "live";
   let record;
   let resumed = null;
   try {
-    // A practice table keeps its saved game. Choosing another market means starting over, so ask first.
-    let saved = readSlot(room, view.team);
+    // A practice team keeps its saved game. Choosing another market means starting over, so ask first.
+    let saved = readSlot(room, team);
     if (saved && saved.market !== market) {
-      const replace = await ask("Start a new practice game?", "Table " + view.team + " already has a saved practice game for " + MARKETS[saved.market].name +
+      const replace = await ask("Start a new practice game?", "Team " + team + " already has a saved practice game for " + MARKETS[saved.market].name +
         " (" + saved.history.length + " of " + ROUNDS.length + " decisions). Replace it with a new game for " + MARKETS[market].name + "?", "Replace it");
       if (!replace) return;
       await view.writes;
-      clearSlot(room, view.team);
+      clearSlot(room, team);
       saved = null;
     }
-    // On a new device (or after the browser data was cleared) the sheet holds the table's earlier game.
-    if (!saved && live && hosted()) {
+    // On a new device (or after the browser data was cleared) the sheet holds the team's earlier game.
+    if (!saved && live && hosted() && view.player) {
       try {
-        const payload = await fetchTeam(room, view.team);
+        const payload = await fetchTeam(view.player.id);
         if (payload.decisions.length || payload.notes.length || payload.brief) resumed = recordFromPayload(payload, market);
       } catch (error) {
-        if (!await ask("Google Sheets cannot be reached", "The page could not check Google Sheets for an earlier game of table " + view.team + " (" + (error.message || "no connection") +
-            "). If this table has already played, starting again may conflict with its recorded decisions. Start anyway?", "Start anyway")) return;
+        if (auto) throw new Error("Google Sheets cannot be reached (" + (error.message || "no connection") + "). Press “Open the game” to try again.");
+        if (!await ask("Google Sheets cannot be reached", "The page could not check Google Sheets for an earlier game of team " + team + " (" + (error.message || "no connection") +
+            "). If this team has already played, starting again may conflict with its recorded decisions. Start anyway?", "Start anyway")) return;
       }
     }
-    record = await withSaveLock(teamKey(room, view.team), () => {
-      let record = readSlot(room, view.team);
-      if (record && record.market !== market) throw new Error("This table has a saved game for another market. Reopen the page and try again.");
-      record = record || resumed || newRecord(view.entryMode, room, view.team, market);
+    record = await withSaveLock(teamKey(room, team), () => {
+      let record = readSlot(room, team);
+      if (record && record.market !== market) throw new Error("This team has a saved game for another market. Reopen the page and try again.");
+      record = record || resumed || newRecord(mode, room, team, market);
       record = settleDeadlines(record, trueNow());
       storeRecord(record);
       return record;
@@ -3455,7 +3600,62 @@ async function join() {
     if (error instanceof SaveError) return showRecovery(error);
     throw error;
   }
+  view.stayHome = false;
   showTeam(record, resumed && record.session === resumed.session ? "Continued from Google Sheets: " + record.history.length + " of " + ROUNDS.length + " decisions restored." : "");
+}
+
+// The practice form: one team on this device, nothing is sent anywhere.
+async function join() {
+  await openTable({room: "PRACTICE", team: view.team, market: view.market, mode: "practice"});
+}
+
+// The captain's device opens the game as soon as the facilitator starts it.
+async function enterGame(auto = false) {
+  const me = view.me;
+  if (!view.player || !me || me.state !== "started" || !me.captain || roomStart(me.room) === null) return;
+  await openTable({room: me.room, team: me.team, market: marketForTable(me.room, me.team), mode: "live", auto});
+}
+
+async function signUp(form) {
+  const data = new FormData(form);
+  const international = data.get("international");
+  if (!international) throw new Error("Say whether you are an international student.");
+  view.pendingId ||= newId();
+  const me = await joinGame(view.pendingId, String(data.get("name") || ""), international === "yes");
+  view.player = {id: view.pendingId, name: me.name};
+  view.pendingId = "";
+  writePlayer(view.player);
+  setParticipant(view.player.id);
+  view.me = me;
+  view.meKey = JSON.stringify(me);
+  announce("");
+  render("#omf-entry-title");
+}
+
+// Asks the sheet where this player stands; the page changes when the facilitator forms the teams or starts the game.
+async function pollMe() {
+  if (!hosted() || !view.player || view.page !== "home" || view.entryMode !== "live" || document.visibilityState === "hidden") return;
+  let me;
+  try { me = await fetchMe(view.player.id); }
+  catch { return; }
+  if (view.page !== "home") return;
+  if (!me.found) {
+    view.player = null;
+    view.me = null;
+    view.meKey = "";
+    writePlayer(null);
+    setParticipant("");
+    announce("The game was reset. Join your team again.", "warning");
+    render("#omf-entry-title");
+    return;
+  }
+  const key = JSON.stringify(me);
+  view.me = me;
+  if (key !== view.meKey) {
+    view.meKey = key;
+    render();
+  }
+  if (me.state === "started" && me.captain && !view.stayHome && !view.busy) await run(() => enterGame(true));
 }
 
 function saveChange(change, now = trueNow()) {
@@ -3527,7 +3727,7 @@ async function restoreRecord(record, message, confirm = true) {
   const key = teamKey(record.room, record.team);
   await view.writes;
   const before = getStored(key);
-  if (confirm && before !== null && !await ask("Replace a saved game?", "Replace the saved game of table " + record.team + " (" + MARKETS[record.market].name + ") with this copy?", "Replace")) return;
+  if (confirm && before !== null && !await ask("Replace a saved game?", "Replace the saved game of team " + record.team + " (" + MARKETS[record.market].name + ") with this copy?", "Replace")) return;
   const next = await withSaveLock(key, () => {
     if (getStored(key) !== before) throw new Error("The save changed. Pick the file again.");
     const restored = settleDeadlines({...record, session: newId()}, trueNow());
@@ -3540,8 +3740,8 @@ async function restoreRecord(record, message, confirm = true) {
 function home() {
   if (view.record) {
     view.entryMode = view.record.mode;
-    if (view.record.mode === "live") view.room = view.record.room;
-    else view.market = view.record.market;
+    view.stayHome = view.record.mode === "live";
+    if (view.record.mode !== "live") view.market = view.record.market;
   }
   view.page = "home";
   view.record = null;
@@ -3573,11 +3773,24 @@ const controls = {
     heading.focus({preventScroll: true});
     heading.scrollIntoView({block: "start", behavior: "instant"});
   },
-  "config-retry": () => loadConfig(),
   "recover-sheet": async () => {
     const {room, team} = view.recovery;
-    const payload = await fetchTeam(room, team);
+    const payload = await fetchTeam(view.player?.id ?? "");
     await restoreRecord(recordFromPayload(payload, marketForTable(room, team)), "Loaded from Google Sheets.", false);
+  },
+  "enter-game": () => { view.stayHome = false; return enterGame(false); },
+  ready: async () => {
+    view.me = await setReady(view.player.id, !view.me.ready);
+    view.meKey = JSON.stringify(view.me);
+    render();
+  },
+  captain: async () => {
+    if (!await ask("Play on this device?", "Your team plays on one device, the captain’s. If you take over, the other device should stop playing.", "Play here")) return;
+    view.me = await claimCaptain(view.player.id);
+    view.meKey = JSON.stringify(view.me);
+    view.stayHome = false;
+    render();
+    await enterGame(false);
   },
   "entry-mode": () => { view.entryMode = view.entryMode === "live" ? "practice" : "live"; render("#omf-entry-title"); },
   "practice-b": async () => {
@@ -3593,7 +3806,7 @@ const controls = {
   "next-practice": () => { view.practiceReview = null; render("#omf-stage-title"); },
   reset: async () => {
     const record = view.record;
-    if (record?.mode !== "practice" || !await ask("Reset the practice table?", "Its locally saved choices and notes will be removed.", "Reset practice")) return;
+    if (record?.mode !== "practice" || !await ask("Reset the practice team?", "Its locally saved choices and notes will be removed.", "Reset practice")) return;
     await view.writes;
     await withSaveLock(teamKey(record.room, record.team), () => {
       if (readSlot(record.room, record.team)?.session !== record.session) throw new Error("The practice save has changed.");
@@ -3614,6 +3827,7 @@ root.addEventListener("click", event => {
 root.addEventListener("submit", event => {
   const form = event.target;
   if (form.dataset.form === "join") { event.preventDefault(); void run(join); }
+  else if (form.dataset.form === "signup") { event.preventDefault(); void run(() => signUp(form)); }
   else if (form.dataset.form === "lock") {
     event.preventDefault();
     void run(() => submitRound(form.dataset.round));
@@ -3622,24 +3836,13 @@ root.addEventListener("submit", event => {
 
 root.addEventListener("input", event => {
   const input = event.target;
-  if (input.dataset.entry === "room") {
-    view.room = input.value;
-    refreshAssignment();
-  } else if (input.matches("textarea")) capture(input);
+  if (input.matches("textarea")) capture(input);
   if (input.dataset.host) updateHostField(input);
 });
 
-function refreshAssignment() {
-  const info = root.querySelector("[data-assigned]");
-  const market = roomStart(view.room) === null ? null : MARKETS[marketForTable(view.room, view.team)];
-  if (!info || view.entryMode !== "live") return;
-  info.textContent = hosted() ? (view.config.room ? "Choose the table the facilitator gave you." + (market ? " Your market is " + market.name + "." : "") : "The facilitator has not opened a room yet.") :
-    market ? "Your assigned market is " + market.name + "." : "Use the table number assigned by the facilitator.";
-}
-
 root.addEventListener("change", event => {
   const input = event.target;
-  if (input.dataset.entry === "team") { view.team = Number(input.value); refreshAssignment(); }
+  if (input.dataset.entry === "team") view.team = Number(input.value);
   else if (input.dataset.entry === "market") view.market = input.value;
   else if (input.dataset.draft === "choice" || input.dataset.draft === "problem") capture(input);
   else if (input.dataset.host) updateHostField(input, render);
@@ -3670,12 +3873,13 @@ window.addEventListener("storage", event => {
 
 let previousHostTick = 0;
 setInterval(() => void triggerSync(), 30_000);
+setInterval(() => void pollMe(), 5000);
 window.addEventListener("online", () => void triggerSync());
 
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") void triggerSync(); });
 
 // The facilitator's page follows the sheet.
-setInterval(() => { if (view.page === "host") void refreshHostData({render, announce}); }, 15_000);
+setInterval(() => { if (view.page === "host") void refreshHostData({render, announce}); }, 8_000);
 
 setInterval(() => {
   if (view.page === "team") void syncTeam();
@@ -3691,10 +3895,8 @@ await Promise.race([syncing, new Promise(resolve => setTimeout(resolve, 3000))])
 void syncing.then(() => renderNotice());
 setInterval(() => void syncClock().then(() => renderNotice(), () => {}), 10 * 60_000);
 
-void loadConfig();
 const last = activeTeam();
 if (knownTable(last)) {
-  view.room = last.room === "PRACTICE" ? "" : last.room;
   view.entryMode = last.room === "PRACTICE" ? "practice" : "live";
   view.team = last.team;
   try {
@@ -3713,6 +3915,7 @@ if (knownTable(last)) {
 }
 render();
 void triggerSync();
+void pollMe();
 })();
 })();
 </script>

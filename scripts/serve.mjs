@@ -6,19 +6,20 @@ import { createBackend } from './fake-google.mjs';
 
 // A tiny local web server for trying the game in a browser (no dependencies).
 //
-//   node scripts/serve.mjs                       http://localhost:8080
+//   node scripts/serve.mjs                       http://localhost:8080 with a local stand-in for Google Sheets
+//                                                 (it runs the real Code.gs); view the sheets at /sheets/view,
+//                                                 facilitator password: facilitator1 (or --password=…)
 //   node scripts/serve.mjs --port=3000
 //   node scripts/serve.mjs --lan                 also reachable from phones on the same Wi-Fi
-//   node scripts/serve.mjs --sync-url=https://script.google.com/macros/s/…/exec
-//   node scripts/serve.mjs --fake-sheets         a local stand-in for Google Sheets (runs the real Code.gs);
-//                                                 view the sheets at /sheets/view, facilitator password: --password=…
+//   node scripts/serve.mjs --sync-url=https://script.google.com/macros/s/…/exec     use your real Google Sheet instead
+//   node scripts/serve.mjs --no-sheets           practice only, no Google Sheets at all
 //
 // It serves the built page only (run `node scripts/build.mjs` after changing src/). Served over http the
 // game can synchronize its clock with this server's Date header, exactly as it does on Tilda.
 
 const PAGE = new URL("../one-market-first.html", import.meta.url);
 
-const SHEET_ORDER = ["Progress", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "Brief", "Decisions", "Notes", "Settings"];
+const SHEET_ORDER = ["Overview", "Team 1", "Team 2", "Team 3", "Team 4", "Scores", "Players", "Settings", "Decisions", "Notes"];
 const html = text => String(text).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
 function sheetsView(backend) {
@@ -82,9 +83,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const port = Number(option("port") ?? process.env.PORT ?? 8080);
   const lan = option("lan") === true;
   const syncUrl = String(option("sync-url") ?? process.env.OMF_SYNC_URL ?? "");
-  const fake = option("fake-sheets") === true;
+  const fake = option("no-sheets") !== true && !syncUrl;
   const password = String(option("password") ?? "facilitator1");
-  const server = createServer({syncUrl: fake ? "" : syncUrl, fakeSheets: fake ? {password} : null});
+  const server = createServer({syncUrl, fakeSheets: fake ? {password} : null});
   server.on("error", error => {
     console.error(error.code === "EADDRINUSE" ? `Port ${port} is busy. Try: node scripts/serve.mjs --port=${port + 1}` : error.message);
     process.exit(1);
@@ -97,7 +98,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       }
     }
     if (syncUrl && !fake) console.log("Google Sheets address: " + syncUrl);
-    if (fake) console.log(`Local Google Sheets stand-in:\n  view the sheets  http://localhost:${port}/sheets/view\n  facilitator password: ${password}`);
+    if (fake) {
+      console.log(`\nLocal Google Sheets stand-in (data is lost when you stop the server):
+  view the sheets       http://localhost:${port}/sheets/view
+  facilitator password  ${password}
+
+Try the whole game alone:
+  1. Open http://localhost:${port}/ , press "Join your team", enter a name.
+  2. Open http://localhost:${port}/ in a private window → "Facilitator" → enter the password → "Refresh now".
+  3. "Add demo players (test)" → "Form teams" → on the first page press "I'm ready"
+  4. Choose "right now" and press "Start the game". Your first page opens the game (or press "Play on this device instead").`);
+    }
     console.log("Press Ctrl+C to stop.");
   });
 }

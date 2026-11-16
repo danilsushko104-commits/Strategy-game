@@ -248,18 +248,18 @@ export function writeSynced(room, team, endpoint, count) {
   writeSyncState(room, team, endpoint, {...state, count});
 }
 
-// The room the facilitator opened, remembered so that a reload without a connection still finds it.
-export function readConfigCache() {
+// The player of this device: a secret pass the sheet recognizes, and the name shown to teammates.
+export function readPlayer() {
   try {
-    const value = JSON.parse(getStored(prefix + ":config"));
-    return typeof value?.room === "string" ? value : null;
+    const value = JSON.parse(getStored(prefix + ":player"));
+    return typeof value?.id === "string" && value.id.length >= 16 && typeof value.name === "string" ? {id: value.id, name: value.name} : null;
   } catch {
     return null;
   }
 }
 
-export function writeConfigCache(config) {
-  putStored(prefix + ":config", JSON.stringify({room: config.room, start: config.start}));
+export function writePlayer(player) {
+  putStored(prefix + ":player", player ? JSON.stringify({id: player.id, name: player.name}) : null);
 }
 
 export function activeTeam(value) {
