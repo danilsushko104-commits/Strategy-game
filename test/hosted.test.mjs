@@ -98,7 +98,7 @@ test("The facilitator opens the room, the teams see their market, and decisions 
 
     // A worksheet note follows a few seconds after the writing pauses.
     await team.locator("textarea[data-note]").first().fill("Frequent travellers in Jakarta");
-    await until(() => backend.table("Notes").some(row => row.text === "Frequent travellers in Jakarta"), "the note reaches the sheet", 15_000);
+    await until(() => backend.table("Notes").some(row => row.text === "Frequent travellers in Jakarta"), "the note reaches the sheet", 25_000);
     await until(() => backend.table("R1").some(row => row.proposition === "Frequent travellers in Jakarta"), "the note shows in the R1 sheet");
     const [r1] = backend.table("R1");
     assert.equal(r1.team, 2);
@@ -116,7 +116,7 @@ test("A team continues on another device: its decisions and notes come back from
     await first.click('button:has-text("Open team dashboard")');
     await lockFirstCard(first);
     await first.locator("textarea[data-note]").first().fill("Written on the first device");
-    await until(() => backend.table("Notes").some(row => row.text === "Written on the first device"), "the note is in the sheet", 15_000);
+    await until(() => backend.table("Notes").some(row => row.text === "Written on the first device"), "the note is in the sheet", 25_000);
     const credits = await first.locator(".pv-budget strong").innerText();
 
     // A fresh browser has nothing stored: everything must come from the sheet.

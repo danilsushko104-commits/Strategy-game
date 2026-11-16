@@ -287,3 +287,27 @@ test("The facilitator reads every team of the room, with the password", async ()
   const data = await fetchRoom(room, "a good password", {request});
   assert.deepEqual(data.teams.map(team => team.decisions.length), [3, 0, 0, 0]);
 });
+
+test("A note typed while a send is running is sent right after it, not at the next timer", async () => {
+  clearSlot(room, 1);
+  configureSync(URL);
+  const remote = sheet();
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let first = true;
+  const slow = async (url, options) => {
+    if (first) { first = false; await gate; }          // the first request (the decisions) is slow
+    return remote.request(url, options);
+  };
+  const early = withNotes(liveRecord(threeRounds()), {});
+  const running = flushSync(early, {request: slow});
+  // The facilitator-visible moment: the team types while the decisions are still being sent.
+  const later = withNotes(early, {"R1.cage": "typed during the send"});
+  const joined = flushSync(later, {request: slow});
+  release();
+  await Promise.all([running, joined]);
+  assert.equal(remote.stored.size, 3, "the decisions arrived");
+  assert.equal(remote.notes.length, 1, "and the note was sent without waiting for another trigger");
+  assert.equal(remote.notes[0].items[0].text, "typed during the send");
+  assert.equal(syncStatus().pendingNotes, 0);
+});

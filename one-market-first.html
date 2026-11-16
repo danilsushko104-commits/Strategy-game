@@ -2305,11 +2305,30 @@ async function run(record, request, force) {
   return syncStatus();
 }
 
-// Sends every decision and note the sheet has not confirmed yet. Safe to call as often as needed;
-// a call that arrives while one is running joins it.
+// Sends every decision and note the sheet has not confirmed yet. Safe to call as often as needed.
+// A call that arrives while a send is running is not lost: once that send ends, one more runs with the
+// newest record, so notes typed meanwhile are included.
+let waiting = null;
+
 function flushSync(record, {request = globalThis.fetch, force = false} = {}) {
   if (!state.endpoint || record.mode !== "live") return Promise.resolve(syncStatus());
-  if (!sending) sending = run(record, request, force).finally(() => { sending = null; });
+  if (sending) {
+    waiting = {record, request};
+    return sending;
+  }
+  sending = (async () => {
+    try {
+      let result = await run(record, request, force);
+      while (waiting) {
+        const next = waiting;
+        waiting = null;
+        result = await run(next.record, next.request, false);
+      }
+      return result;
+    } finally {
+      sending = null;
+    }
+  })();
   return sending;
 }
 
