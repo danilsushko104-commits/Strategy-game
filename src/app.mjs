@@ -5,6 +5,7 @@ import { storageAvailable, getStored, putStored, teamKey, readSlot, storeRecord,
   newRecord, withSaveLock, knownTable } from './storage.mjs';
 import { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename } from './presentation.mjs';
 import { renderHost, handleHostAction, updateHostField, importTeamFile, hostClock } from './host.mjs';
+import { trueNow, clockStatus, syncClock } from './clock.mjs';
 
 const root = document.querySelector("#one-market-first");
 const ui = Object.fromEntries([...root.querySelectorAll("[data-ui]")].map(element => [element.dataset.ui, element]));
@@ -21,9 +22,19 @@ function announce(message, tone = "info") {
   renderNotice();
 }
 
+function clockNote() {
+  const status = clockStatus();
+  if (status.synced) {
+    const seconds = Math.round(Math.abs(status.offset) / 1000);
+    return seconds < 2 ? "" : " This device’s clock is " + seconds + " s " + (status.offset > 0 ? "slow" : "fast") + ". The game follows the server time.";
+  }
+  const live = view.page === "host" || view.record?.mode === "live";
+  return live ? " Server time is unavailable, so this device’s clock sets the rounds. Compare it with the facilitator’s clock." : "";
+}
+
 function renderNotice() {
   const warning = storageAvailable() ? "" : " Browser storage is unavailable. Export the JSON before leaving this page.";
-  ui.notice.textContent = (view.notice + warning).trim();
+  ui.notice.textContent = (view.notice + warning + clockNote()).trim();
   ui.notice.hidden = !ui.notice.textContent;
 }
 
@@ -265,7 +276,7 @@ function renderTeam(now) {
     </aside></div>`;
 }
 
-function updateClock(now = Date.now()) {
+function updateClock(now = trueNow()) {
   if (view.page === "host") {
     hostClock(root, now);
     return;
@@ -283,7 +294,7 @@ function updateClock(now = Date.now()) {
 }
 
 function render(focus = "") {
-  const now = Date.now();
+  const now = trueNow();
   const element = document.activeElement;
   const field = element?.dataset;
   const selection = [element?.selectionStart, element?.selectionEnd];
@@ -337,14 +348,14 @@ async function join() {
     let record = readSlot(room, view.team);
     if (record && record.market !== market) throw new Error("This practice table has a saved market. Open it and reset practice, or choose another table.");
     record = record || newRecord(view.entryMode, room, view.team, market);
-    record = settleDeadlines(record, Date.now());
+    record = settleDeadlines(record, trueNow());
     storeRecord(record);
     return record;
   });
   showTeam(record);
 }
 
-function saveChange(change, now = Date.now()) {
+function saveChange(change, now = trueNow()) {
   const expected = view.record;
   if (!expected) return Promise.resolve();
   const job = view.writes.then(() => withSaveLock(teamKey(expected.room, expected.team), () => {
@@ -404,7 +415,7 @@ async function restoreTeam(file) {
   if (before !== null && !await ask("Replace a saved game?", "Restore table " + record.team + " for " + MARKETS[record.market].name + " from this JSON file?", "Restore")) return;
   const next = await withSaveLock(key, () => {
     if (getStored(key) !== before) throw new Error("The save changed. Pick the file again.");
-    const restored = settleDeadlines({...record, session: newId()}, Date.now());
+    const restored = settleDeadlines({...record, session: newId()}, trueNow());
     storeRecord(restored);
     return restored;
   });
@@ -520,7 +531,7 @@ root.addEventListener("change", event => {
 
 async function syncTeam() {
   if (view.page !== "team" || !view.record || view.busy) return;
-  const now = Date.now();
+  const now = trueNow();
   if (view.record.mode === "live" && teamKeyForView(now) !== view.pageKey) {
     await run(async () => { await saveChange(record => record, now); render(); });
   }
@@ -545,10 +556,16 @@ let previousHostTick = 0;
 setInterval(() => {
   if (view.page === "team") void syncTeam();
   if (view.page === "host") {
-    const now = Date.now();
+    const now = trueNow();
     if (now - previousHostTick > 350) { updateClock(now); previousHostTick = now; }
   }
 }, 300);
+
+// Settle deadlines only after the shared clock is known: an early default is written permanently.
+const syncing = syncClock().catch(() => {});
+await Promise.race([syncing, new Promise(resolve => setTimeout(resolve, 3000))]);
+void syncing.then(() => renderNotice());
+setInterval(() => void syncClock().then(() => renderNotice(), () => {}), 10 * 60_000);
 
 const last = activeTeam();
 if (knownTable(last)) {

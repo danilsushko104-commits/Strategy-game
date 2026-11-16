@@ -2,6 +2,7 @@ import { CONFIG, MARKETS, BULLETINS, RUBRIC, QUESTION } from './scenario.mjs';
 import { TEAMS, SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, validateRecord, scoreJury, compareScores } from './rules.mjs';
 import { hostKey, getStored, putStored } from './storage.mjs';
 import { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport } from './presentation.mjs';
+import { trueNow } from './clock.mjs';
 
 const activeKey = hostKey("active");
 const moscowDate = new Intl.DateTimeFormat("sv-SE", {timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit"});
@@ -29,7 +30,7 @@ function storePanel() {
 function startForm() {
   const today = moscowDate.format(new Date());
   const planned = Date.parse(today + "T18:30+03:00");
-  const date = moscowDate.format(new Date(planned > Date.now() ? planned : planned + 86_400_000));
+  const date = moscowDate.format(new Date(planned > trueNow() ? planned : planned + 86_400_000));
   const time = host.start || (host.room ? moscowDate.format(roomStart(host.room)) + "T" + interval(host.room, 0, 1).slice(0, 5) : date + "T18:30");
   return `<div class="pv-panel">
     <label class="pv-field">R1 start · Moscow time
