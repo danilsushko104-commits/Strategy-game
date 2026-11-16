@@ -20,6 +20,16 @@ async function withGame(run) {
   // Every person is a browser profile of their own, as on separate devices.
   const person = async () => {
     const page = await (await browser.newContext({viewport: {width: 1280, height: 800}})).newPage();
+    // Keep every message the banner ever showed: the next redraw clears it, and a failure would vanish.
+    await page.addInitScript(() => {
+      window.__notices = [];
+      const watch = () => {
+        const element = document.querySelector('[data-ui="notice"]');
+        if (!element) return requestAnimationFrame(watch);
+        new MutationObserver(() => { if (element.textContent) window.__notices.push(element.textContent); }).observe(element, {childList: true, characterData: true, subtree: true, attributes: true});
+      };
+      watch();
+    });
     page.on("console", message => { if (["error", "warning"].includes(message.type()) && !/net::ERR_FAILED/.test(message.text())) problems.push(message.text()); });
     page.on("pageerror", error => problems.push(error.message));
     await page.goto(base);
@@ -52,14 +62,27 @@ async function lockFirstCard(page) {
   await page.locator('dialog[open] button:has-text("Lock decision")').click();
 }
 
-async function until(check, message, timeout = 12_000) {
+// Waits for a condition; when it never comes, the failure carries what the page and the sheet looked like.
+async function until(check, message, timeout = 12_000, diagnose = null) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
     if (check()) return;
     await new Promise(resolve => setTimeout(resolve, 150));
   }
-  assert.fail(message);
+  assert.fail(message + (diagnose ? " | " + await diagnose().catch(error => "diagnostics failed: " + error.message) : ""));
 }
+
+const describe = (page, backend) => async () => JSON.stringify({
+  syncLine: (await page.locator(".pv-sync").first().innerText().catch(() => "(none)")).replace(/\n/g, " "),
+  noteInPage: await page.locator("textarea[data-note]").first().inputValue().catch(() => "(gone)"),
+  storedSync: await page.evaluate(() => Object.entries(localStorage).filter(([key]) => /:sync:/.test(key)).map(([, value]) => value)),
+  storedRecord: await page.evaluate(() => Object.entries(localStorage).filter(([key]) => /:team:\d$/.test(key)).map(([, value]) => { const r = JSON.parse(value); return {history: r.history.length, notes: r.notes, session: r.session.slice(0, 8)}; })),
+  notice: await page.locator("[data-ui=notice]").innerText().catch(() => ""),
+  noticesSeen: await page.evaluate(() => window.__notices).catch(() => []),
+  stage: await page.locator("#omf-stage-title").innerText().catch(() => ""),
+  decisions: backend.table("Decisions").length,
+  notes: backend.table("Notes").map(row => row.field + "=" + row.text)
+});
 
 test("A team only picks its table; there is no room code, no file restore and no practice link", {skip}, async () => {
   await withGame(async ({person}) => {
@@ -98,7 +121,7 @@ test("The facilitator opens the room, the teams see their market, and decisions 
 
     // A worksheet note follows a few seconds after the writing pauses.
     await team.locator("textarea[data-note]").first().fill("Frequent travellers in Jakarta");
-    await until(() => backend.table("Notes").some(row => row.text === "Frequent travellers in Jakarta"), "the note reaches the sheet", 25_000);
+    await until(() => backend.table("Notes").some(row => row.text === "Frequent travellers in Jakarta"), "the note reaches the sheet", 25_000, describe(team, backend));
     await until(() => backend.table("R1").some(row => row.proposition === "Frequent travellers in Jakarta"), "the note shows in the R1 sheet");
     const [r1] = backend.table("R1");
     assert.equal(r1.team, 2);
@@ -116,7 +139,7 @@ test("A team continues on another device: its decisions and notes come back from
     await first.click('button:has-text("Open team dashboard")');
     await lockFirstCard(first);
     await first.locator("textarea[data-note]").first().fill("Written on the first device");
-    await until(() => backend.table("Notes").some(row => row.text === "Written on the first device"), "the note is in the sheet", 25_000);
+    await until(() => backend.table("Notes").some(row => row.text === "Written on the first device"), "the note is in the sheet", 25_000, describe(first, backend));
     const credits = await first.locator(".pv-budget strong").innerText();
 
     // A fresh browser has nothing stored: everything must come from the sheet.
