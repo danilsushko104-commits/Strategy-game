@@ -98,7 +98,7 @@ function scoresTable() {
     ${counted ? '<p class="pv-inline-note">Final = ' + Math.round((1 - tuning().gameShare) * 100) + "% experts + " + Math.round(tuning().gameShare * 100) + "% game result. The game result comes from the imported team JSON.</p>" : ""}
     <table class="pv-scores"><thead><tr><th scope="col">Market</th><th scope="col">Written</th><th scope="col">Oral</th>${counted ? '<th scope="col">Game</th><th scope="col">Final</th>' : '<th scope="col">Total</th>'}</tr></thead>
     <tbody>${body}</tbody></table>
-    <div class="pv-actions pv-file-actions">${button("Export scores CSV", "host-scores")}${button("CSV for Russian Excel (;)", "host-scores-ru")}</div></div>`;
+    <div class="pv-actions pv-file-actions">${button("Export scores CSV", "host-scores")}${button("Export for Excel", "host-scores-ru")}</div></div>`;
 }
 
 function judgeTable(team) {
