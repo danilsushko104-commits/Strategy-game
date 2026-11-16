@@ -232,7 +232,7 @@ function handleDemo(payload) {
   for (var number = 1; number <= 90 && made < count; number++) {
     var name = "Demo " + number;
     if (readPlayers().some(function (player) { return player.name === name; })) continue;
-    addPlayer(name, Math.random() < 0.4, Utilities.getUuid(), settings);
+    addPlayer(name, typeof payload.international === "boolean" ? payload.international : Math.random() < 0.4, Utilities.getUuid(), settings);
     made++;
   }
   return readRoster();

@@ -10,7 +10,8 @@ export function hostApi(base, token) {
   const api = {
     post, get,
     form: () => post({type: "form", token}),
-    demo: count => post({type: "demo", token, count}),
+    // `international` (true or false) fixes the kind of every demo player; left out, the sheet draws it.
+    demo: (count, international) => post({type: "demo", token, count, ...(international === undefined ? {} : {international})}),
     roster: () => get({action: "roster", token}),
     me: id => get({action: "me", id}),
     captain: id => post({type: "captain", id}),

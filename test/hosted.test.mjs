@@ -185,7 +185,7 @@ test("A teammate takes over as captain on another device and finds the team's de
     const second = await person();
     await signUp(first, "Boris T");
     await signUp(second, "Clara M");
-    await api.demo(6);
+    await api.demo(6, false);   // with only non-international players the draw can put two given people together
     const idOf = name => backend.table("Players").find(row => row.name === name).id;
     await api.formUntil(async () => (await api.me(idOf("Boris T"))).team === (await api.me(idOf("Clara M"))).team);
     await api.captain(idOf("Boris T"));

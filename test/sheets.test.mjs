@@ -186,6 +186,8 @@ test("Demo players let the facilitator try the whole game alone", () => {
   assert.ok(roster.players.every(player => /^Demo \d+$/.test(player.name)));
   assert.equal(host(backend, "demo", {count: 4}).players.length, 12);
   assert.equal(host(backend, "form").state, "formed");
+  const fixed = host(createBackend({token: TOKEN}), "demo", {count: 5, international: true});
+  assert.ok(fixed.players.every(player => player.international), "a test can fix the kind of the demo players");
 });
 
 // ---- Decisions: the raw log and one sheet per team --------------------------------------------------------
