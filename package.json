@@ -3,9 +3,14 @@
   "version": "2.0.0",
   "private": true,
   "description": "Revolut — One Market First: a classroom strategy simulation that runs in the browser (and in a Tilda T123 block).",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "start": "node scripts/build.mjs && node scripts/serve.mjs",
+    "serve": "node scripts/serve.mjs",
+    "balance": "node scripts/balance.mjs",
     "test": "node --test"
   }
 }

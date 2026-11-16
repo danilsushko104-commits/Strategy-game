@@ -4,22 +4,33 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { build, inlineModules, MODULES, OUTPUT_HTML, OUTPUT_FRAGMENT } from '../scripts/build.mjs';
+import { build, inlineModules, MODULES, ENGINE_MODULES, INTERFACE_MODULES, OUTPUT_HTML, OUTPUT_BLOCKS } from '../scripts/build.mjs';
 
 const file = path => fileURLToPath(new URL("../" + path, import.meta.url));
 const scriptOf = fragment => fragment.slice(fragment.indexOf("<script>") + 8, fragment.lastIndexOf("</script>"));
 
-test("The committed T123 and HTML files are exactly what the build produces from src/", async () => {
-  const {html, fragment} = await build();
+test("The committed Tilda blocks and the HTML page are exactly what the build produces from src/", async () => {
+  const {html, blocks} = await build();
   assert.equal(await readFile(file(OUTPUT_HTML), "utf8"), html, "run: node scripts/build.mjs");
-  assert.equal(await readFile(file(OUTPUT_FRAGMENT), "utf8"), fragment, "run: node scripts/build.mjs");
+  for (const [key, path] of Object.entries(OUTPUT_BLOCKS)) {
+    assert.equal(await readFile(file(path), "utf8"), blocks[key], path + " is stale. Run: node scripts/build.mjs");
+  }
 });
 
-test("The inlined script is valid JavaScript with no module syntax left", async () => {
-  const {fragment} = await build();
-  const code = scriptOf(fragment);
-  assert.doesNotThrow(() => new vm.Script(code), "the bundle must compile");
-  assert.doesNotMatch(code, /^\s*(import\s*\{|export\s+(const|function|async|let|class|default|\{))/m);
+test("The modules are split into an engine and an interface block, in dependency order", () => {
+  assert.deepEqual([...ENGINE_MODULES, ...INTERFACE_MODULES], MODULES);
+  assert.equal(INTERFACE_MODULES.at(-1), "app");
+});
+
+test("Every Tilda block stays small enough to paste, and the scripts compile with no module syntax left", async () => {
+  const {blocks} = await build();
+  for (const [key, text] of Object.entries(blocks)) {
+    assert.ok(Buffer.byteLength(text) < 80 * 1024, key + " block is " + Math.round(Buffer.byteLength(text) / 1024) + " KB");
+    if (key === "css") { assert.doesNotMatch(text, /<script/); continue; }
+    const code = text.slice(text.indexOf("<script>") + 8, text.lastIndexOf("</script>"));
+    assert.doesNotThrow(() => new vm.Script(code), key + " must compile");
+    assert.doesNotMatch(code, /^\s*(import\s*\{|export\s+(const|function|async|let|class|default|\{))/m);
+  }
 });
 
 function fakeSources(overrides = {}) {
@@ -82,6 +93,23 @@ test("The generated page runs a full practice game in a browser without console 
     await page.click('button:has-text("Create a new room")');
     assert.match(await page.locator(".pv-record h3").first().innerText(), /^OMF-/);
     assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("Pasting the interface block without the engine block explains what is missing", {skip: !chromium && "Playwright is not installed"}, async () => {
+  const {blocks} = await build();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.setContent("<!doctype html><html><body>" + blocks.css + blocks.interface + "</body></html>");
+    const notice = page.locator("[data-ui=notice]");
+    await notice.waitFor({state: "visible"});
+    assert.match(await notice.innerText(), /game engine block is missing/);
+    assert.deepEqual(errors, []);
   } finally {
     await browser.close();
   }
