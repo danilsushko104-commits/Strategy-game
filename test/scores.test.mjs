@@ -83,49 +83,54 @@ function team(tableNo, choices) {
     history: choices.map((choice, index) => ({round: "R" + (index + 1), choice, method: "submitted", at: when, evidence: "e", tradeoff: "t",
       ...(index === 5 && choice === "targeted" ? {problem: problemFor(["indonesia", "philippines", "thailand", "vietnam"][tableNo - 1], choices[0])} : {})}))};
 }
-const cheapPilot = ["A", "desk", "pilot", "verify", "narrow", "targeted", "pilot"];     // 70 in Indonesia and in the Philippines
-const deferral = ["A", "desk", "pilot", "reserve", "keep", "hold", "defer"];            // 10
+const cheapPilot = ["A", "desk", "pilot", "verify", "narrow", "targeted", "pilot"];     // 44 + 4 + 4 + 9 + 4 credits x 2 = 69
+const deferral = ["A", "desk", "pilot", "reserve", "keep", "hold", "defer"];            // 18 + 2 = 20
+const CHEAP = 69;
+const DEFER = 20;
+const f1 = value => value.toFixed(1);
 const records = {1: team(1, cheapPilot), 2: team(2, cheapPilot), 3: team(3, deferral)};
 const mixed = {...grades, 3: [without([5]), without([5]), without([5])]};
 
 test("The game result comes from the imported team files and the final grade follows the 65/35 rule", () => {
-  assert.equal(gameScore(records[1]).total, 70);
-  assert.equal(gameScore(records[3]).total, 10);
+  assert.equal(gameScore(records[1]).total, CHEAP);
+  assert.equal(gameScore(records[3]).total, DEFER);
   const rows = standings(mixed, records);
-  assert.equal(rows[0].final, 0.65 * 100 + 0.35 * 70);
-  assert.equal(rows[2].final, 0.65 * 80 + 0.35 * 10);
+  assert.equal(rows[0].final, 0.65 * 100 + 0.35 * CHEAP);
+  assert.equal(rows[2].final, 0.65 * 80 + 0.35 * DEFER);
   assert.equal(rows[3].final, null, "table 4 still lacks an expert sheet and a team file");
   assert.deepEqual(rows.map(row => row.rank), [1, 1, 3, null]);
   assert.deepEqual(rows.map(row => row.tied), [true, true, false, false]);
 });
 
-test("At a 35% share a strong game result can outweigh a clearly better argument", () => {
-  // Argument A is 20 expert points better; B has a 60-point better game result.
+test("At a 35% share a strong game result can outweigh a better argument, but not a much better one", () => {
   const strong = [full(), full(), full()];                                                  // 100 from the experts
-  const weak = [without([0]), without([0]), without([0])];                                  // 80 from the experts
-  const grades = {1: weak, 2: strong};
-  const results = {1: team(1, cheapPilot), 2: team(2, deferral)};                           // 70 in the game, against 10
-  const [a, b] = standings(grades, results);
-  assert.equal(a.final, 0.65 * 80 + 0.35 * 70);                                             // 76.5
-  assert.equal(b.final, 0.65 * 100 + 0.35 * 10);                                            // 68.5
-  assert.ok(a.final > b.final, "20 expert points are worth 13 final points; 60 game points are worth 21");
-  // The expert gap that would still win against a 60-point game gap: 60 * 0.35 / 0.65 = 32.3 points.
-  assert.ok(Math.abs(60 * 0.35 / 0.65 - 32.3) < 0.05);
+  const mixedGood = [without([0]), without([0]), without([0])];                             // 80 from the experts
+  const lowArgument = [without([0, 1, 2]), without([0, 1, 2]), without([0, 1, 2])];         // 40 from the experts (rows 0-2 are 44 points)
+  const results = {1: team(1, cheapPilot), 2: team(2, deferral)};                           // CHEAP in the game, against DEFER
+  const [a, b] = standings({1: mixedGood, 2: strong}, results);
+  assert.equal(a.final, 0.65 * 80 + 0.35 * CHEAP);
+  assert.equal(b.final, 0.65 * 100 + 0.35 * DEFER);
+  assert.ok(a.final > b.final, "20 expert points are worth 13 final points; a " + (CHEAP - DEFER) + "-point game gap is worth " + f1(0.35 * (CHEAP - DEFER)));
+  // The expert gap that would still win against that game gap.
+  const needed = (CHEAP - DEFER) * 0.35 / 0.65;
+  assert.ok(needed > 20 && needed < 30, "needs about " + f1(needed) + " expert points");
+  const [c, d] = standings({1: lowArgument, 2: strong}, results);
+  assert.ok(d.final > c.final, "a much weaker argument does not survive: " + f1(c.final) + " vs " + f1(d.final));
 });
 
 test("The CSV adds the game result and the final grade, or says what is missing", () => {
   const lines = scoresCsv(room, mixed, {records}).slice(1).split("\r\n");
   assert.deepEqual(lines.slice(0, 5), [
     "rank,table,market,written_70,oral_30,uppsala_16,expert_total_100,game_100,final_100,expert1_total,expert2_total,expert3_total,status",
-    "1,1,Indonesia,70.0,30.0,16.0,100.0,70.0,89.5,100.0,100.0,100.0,tied: the Chair decides",
-    "1,2,Philippines,70.0,30.0,16.0,100.0,70.0,89.5,100.0,100.0,100.0,tied: the Chair decides",
-    "3,3,Thailand,70.0,10.0,16.0,80.0,10.0,55.5,80.0,80.0,80.0,complete",
+    `1,1,Indonesia,70.0,30.0,16.0,100.0,${f1(CHEAP)},${f1(0.65 * 100 + 0.35 * CHEAP)},100.0,100.0,100.0,tied: the Chair decides`,
+    `1,2,Philippines,70.0,30.0,16.0,100.0,${f1(CHEAP)},${f1(0.65 * 100 + 0.35 * CHEAP)},100.0,100.0,100.0,tied: the Chair decides`,
+    `3,3,Thailand,70.0,10.0,16.0,80.0,${f1(DEFER)},${f1(0.65 * 80 + 0.35 * DEFER)},80.0,80.0,80.0,complete`,
     ",4,Vietnam,,,,,,,100.0,100.0,,pending: 2 of 3 expert sheets complete"
   ]);
   const ru = scoresCsv(room, mixed, {records, russianExcel: true}).slice(1).split("\r\n");
-  assert.equal(ru[3], "3;3;Thailand;70,0;10,0;16,0;80,0;10,0;55,5;80,0;80,0;80,0;complete");
+  assert.equal(ru[3], `3;3;Thailand;70,0;10,0;16,0;80,0;${f1(DEFER).replace(".", ",")};${f1(0.65 * 80 + 0.35 * DEFER).replace(".", ",")};80,0;80,0;80,0;complete`);
   const withoutFile = scoresCsv(room, mixed, {records: {1: records[1], 2: records[2]}}).slice(1).split("\r\n");
-  assert.match(withoutFile[3], /^,3,Thailand,70\.0,10\.0,16\.0,80\.0,,,80\.0,80\.0,80\.0,pending: import the team JSON for the game result$/);
+  assert.match(withoutFile[3], /^,3,Thailand,70\.0,10\.0,16\.0,80\.0,,,80\.0,80\.0,80\.0,pending: waiting for the team’s data in Google Sheets$/);
 });
 
 test("A countdown shows minutes and seconds, and adds hours only when there are any", () => {

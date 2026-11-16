@@ -36,7 +36,7 @@ export function analyze(config, {gap = 5} = {}) {
         if (record.history.length === ROUNDS.length) {
           const total = gameScore(record).total;
           result.leaves.push(total);
-          return {value: total, line};
+          return {value: total, variance: 0, line};
         }
         const round = ROUNDS[record.history.length];
         const state = replay(record).state;
@@ -45,17 +45,21 @@ export function analyze(config, {gap = 5} = {}) {
           if (round.id === "R6" && item.id === "full") {
             const cohorts = state.cohorts === 2 ? 2 : 1;
             const combos = cohorts === 2 ? chances.flatMap(a => chances.map(b => [a, b])) : chances.map(a => [a]);
+            // Mean and variance of what the team ends with once the draw is known and it answers best.
             let expected = 0;
+            let second = 0;
             for (const combo of combos) {
               forced = combo.map(([delta]) => delta).concat(0);
               const probability = combo.reduce((product, [, p]) => product * p, 1);
-              expected += probability * value(next, [...line, item.id]).value;
+              const outcome = value(next, [...line, item.id]);
+              expected += probability * outcome.value;
+              second += probability * (outcome.value ** 2 + outcome.variance);
             }
             forced = [0, 0];
-            return {item, value: expected, line: [...line, item.id]};
+            return {item, value: expected, variance: Math.max(0, second - expected ** 2), line: [...line, item.id]};
           }
           const child = value(next, [...line, item.id]);
-          return {item, value: child.value, line: child.line};
+          return {item, value: child.value, variance: child.variance, line: child.line};
         });
         const best = children.reduce((a, b) => (b.value > a.value ? b : a));
         for (const child of children) {
@@ -64,14 +68,14 @@ export function analyze(config, {gap = 5} = {}) {
           options[key].nodes++;
           if (child.value >= best.value - gap) options[key].viable++;
           if (round.id === "R3" && (!routeBest[child.item.id] || child.value > routeBest[child.item.id].value)) {
-            routeBest[child.item.id] = {value: child.value, line: child.line};
+            routeBest[child.item.id] = {value: child.value, variance: child.variance, line: child.line};
           }
         }
-        return {value: best.value, line: best.line};
+        return {value: best.value, variance: best.variance, line: best.line};
       }
 
       const root = value({...PRACTICE, market: marketId, history: []}, []);
-      result.markets[marketId] = {name: market.name, root: root.value, line: root.line, routeBest, options, bonus};
+      result.markets[marketId] = {name: market.name, root: root.value, rootVariance: root.variance, line: root.line, routeBest, options, bonus};
     }
     return result;
   } finally {
@@ -80,6 +84,22 @@ export function analyze(config, {gap = 5} = {}) {
 }
 
 const fixed = value => value.toFixed(1);
+
+// The numbers a designer watches: spread between routes and markets, dead options, luck, and the score range.
+export function summarize(result, share) {
+  const markets = Object.values(result.markets);
+  const routeGap = Math.max(...markets.map(m => {
+    const values = ROUTES.map(route => m.routeBest[route]?.value ?? 0);
+    return Math.max(...values) - Math.min(...values);
+  }));
+  const roots = markets.map(m => m.root);
+  const dead = markets.flatMap(m => Object.entries(m.options).filter(([, entry]) => entry.viable === 0).map(([key]) => m.name + " " + key));
+  const luckGame = Math.max(...markets.flatMap(m => ROUTES.map(route => Math.sqrt(m.routeBest[route]?.variance ?? 0))));
+  const low = Math.min(...result.leaves);
+  const high = Math.max(...result.leaves);
+  return {routeGap, marketSpread: Math.max(...roots) - Math.min(...roots), dead, luckGame, luckFinal: luckGame * share, low, high, range: high - low,
+    unreachable: ROUTES.some(route => markets.some(m => !m.routeBest[route]))};
+}
 
 export function render(result, config) {
   const lines = [];
@@ -117,6 +137,17 @@ export function render(result, config) {
     lines.push(`| ${key} | ${cells.join(" | ")} |`);
   }
   lines.push("", dead.length ? "Options with 0% in at least one market: " + dead.join(", ") : "No option is dead in any market.");
+
+  const share0 = config.gameShare;
+  lines.push("", "## Luck: how far the draw in the full retest moves the result", "",
+    "Standard deviation of the game score (and of the final grade) for the best plan of each route. Routes whose best plan avoids the full retest have none.", "",
+    "| Market | " + ROUTES.map(route => route + " (game / final)").join(" | ") + " |", "| --- | " + ROUTES.map(() => "---").join(" | ") + " |");
+  for (const [, m] of markets) {
+    lines.push(`| ${m.name} | ${ROUTES.map(route => {
+      const std = Math.sqrt(m.routeBest[route]?.variance ?? 0);
+      return fixed(std) + " / " + fixed(std * share0);
+    }).join(" | ")} |`);
+  }
 
   const low = Math.min(...result.leaves);
   const high = Math.max(...result.leaves);

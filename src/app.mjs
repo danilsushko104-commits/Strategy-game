@@ -37,7 +37,7 @@ function clockNote() {
 }
 
 function renderNotice() {
-  const warning = storageAvailable() ? "" : " Browser storage is unavailable. Export the JSON before leaving this page.";
+  const warning = storageAvailable() ? "" : " Browser storage is unavailable. Your decisions are still sent to Google Sheets; do not close this page while they are waiting.";
   ui.notice.textContent = (view.notice + warning + clockNote()).trim();
   ui.notice.hidden = !ui.notice.textContent;
 }

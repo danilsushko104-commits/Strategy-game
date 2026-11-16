@@ -74,10 +74,10 @@
 
 | Рынок | Пилот | Альянс | Сделка | Лучшая линия |
 | --- | --- | --- | --- | --- |
-| Indonesia | 70.0 | 70.8 | 69.6 | A › desk › alliance › reserve › broaden › full |
-| Philippines | 70.0 | 70.8 | 69.6 | A › desk › alliance › reserve › broaden › full |
-| Thailand | 72.0 | 70.0 | 69.0 | A › desk › pilot › verify › narrow › targeted › pilot |
-| Vietnam | 68.0 | 70.8 | 69.6 | A › desk › alliance › reserve › broaden › full |
+| Indonesia | 69.0 | 69.0 | 69.6 | A › desk › acquisition › reserve › diligence › full |
+| Philippines | 69.0 | 67.4 | 69.6 | A › desk › acquisition › reserve › diligence › full |
+| Thailand | 71.0 | 69.0 | 67.0 | A › desk › pilot › verify › narrow › targeted › pilot |
+| Vietnam | 67.0 | 67.4 | 69.6 | A › desk › acquisition › reserve › diligence › full |
 
 ## 5. Общая основа: Сингапур
 

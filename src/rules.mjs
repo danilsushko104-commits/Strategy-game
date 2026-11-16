@@ -8,7 +8,7 @@ export const SCHEDULE = [
   [16, 32, "R2", "Customer evidence"],
   [32, 50, "R3", "Entry route and Uppsala"],
   [50, 60, "R4", "Readiness and checkpoint"],
-  [60, 70, "BREAK", "Break and JSON checkpoint"],
+  [60, 70, "BREAK", "Break"],
   [70, 84, "R5", "Competitor response"],
   [84, 104, "R6", "Emergency · bulletin B at +8 minutes"],
   [104, 119, "R7", "Recommendation"],
@@ -512,7 +512,7 @@ export function finalScore(jury, game, share = tuning().gameShare) {
   return jury * (1 - share) + game * share;
 }
 
-// Table by table: the expert score, the game result (from the imported team JSON) and the final grade.
+// Table by table: the expert score, the game result (from the team's data in Google Sheets) and the final grade.
 // The final grade needs the game result only while the game counts towards the grade.
 export function standings(grades, records = {}) {
   const share = tuning().gameShare;
@@ -529,7 +529,7 @@ export function standings(grades, records = {}) {
 }
 
 // The facilitator's "what's next" list. Only the facilitator's own browser knows these facts: the room,
-// the clock, the imported team files and the expert sheets. Whether the teams have joined cannot be seen,
+// the clock, the team data read from the sheet and the expert sheets. Whether the teams have joined cannot be seen,
 // so that step is ticked by hand.
 export function hostChecklist({room, now, grades, records, joined}) {
   const phase = phaseAt(room, now);
@@ -560,7 +560,7 @@ export function hostChecklist({room, now, grades, records, joined}) {
   const current = steps.findIndex(step => !step.done);
   const next = {
     joined: "Ask every team to open the page and join with the room code and its table number.",
-    game: phase.id === "SETUP" ? "Wait for R1. Explain the mandate and run the practice example." : "Run the seminar. Teams download a checkpoint JSON at the break.",
+    game: phase.id === "SETUP" ? "Wait for R1. Explain the mandate and run the practice example." : "Run the seminar. The teams’ data is saved in Google Sheets as they play.",
     files: "Teams finish R7 and their decisions and notes appear here from Google Sheets. Press Refresh now if you do not want to wait.",
     sheets: "The three experts complete their score sheets for every table.",
     ranking: "Check the ranking and export the CSV."

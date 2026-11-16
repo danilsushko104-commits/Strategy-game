@@ -142,14 +142,14 @@ test("The facilitator sees the teams from the sheet: progress, game result and t
     await team.locator(".pv-game-result").waitFor();
     await until(() => backend.table("Decisions").length === 7, "all seven decisions reach the sheet");
     assert.equal(backend.table("Progress")[0].stage, "Finished");
-    assert.equal(Number(backend.table("Progress")[0].game_result), 10);
+    assert.equal(Number(backend.table("Progress")[0].game_result), 20, "the plain defaults: 18 for the deferral and 2 for holding outreach");
 
     await facilitator.click('button[data-action=host]').catch(() => {});
     await facilitator.click('button:has-text("Refresh now")').catch(() => {});
     await facilitator.locator("[data-host-connection-text]:has-text('1 of 4 tables have data')").waitFor({timeout: 20_000});
     await facilitator.locator(".pv-checklist li", {hasText: "Team data from Google Sheets"}).waitFor();
     assert.match(await facilitator.locator(".pv-checklist li", {hasText: "Team data from Google Sheets"}).innerText(), /1 of 4 tables have all 7 decisions\. Missing: table 2, table 3, table 4\./);
-    assert.match(await facilitator.locator(".pv-scores tbody").innerText(), /10\.0/);
+    assert.match(await facilitator.locator(".pv-scores tbody").innerText(), /20\.0/);
     assert.equal(await facilitator.locator("button:has-text('Import team JSON')").count(), 0);
 
     // A wrong password is explained instead of silently loading nothing.

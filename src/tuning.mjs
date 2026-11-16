@@ -11,11 +11,11 @@ const equalMarkets = () => Object.fromEntries(MARKET_IDS.map(id => [id, {price: 
 
 // Game score, 0-100 (hidden from students). All values are drafts.
 const SCORING = {
-  ask: {pilot2: 70, pilot: 45, deal: 54, retest: 22, defer: 10},
+  ask: {pilot2: 64, pilot: 44, deal: 52, retest: 34, defer: 18},
   research: {desk: 0, interview: 4, prototype: 6},
-  verified: 5,
+  verified: 4,
   narrow: 4,
-  response: {hold: 0, targetedProven: 8, targetedOpen: 3, fullPassed: 12, fullFailed: 4},
+  response: {hold: 2, targetedProven: 9, targetedOpen: 3, fullPassed: 10, fullFailed: 7},
   secondCohort: 0,
   dealFullCorrection: 10,
   credit: 2,
@@ -63,7 +63,7 @@ export function useTuning(next) {
 
 // Chance in the full retest: a result moves by -1 or +1 correct answers with probability `retestSpread`
 // each. The draw comes from a hash of room, table and round, so the same save always replays to the same
-// result, restoring from JSON changes nothing, and different rooms and tables get different draws.
+// result, restoring a game from the sheet changes nothing, and different rooms and tables get different draws.
 export function retestDelta(key) {
   const {retestSpread, draw} = active.randomness;
   if (!retestSpread) return 0;

@@ -116,7 +116,7 @@ function scoresTable() {
   const complete = rows.every(row => row.key);
   const ranked = rows.filter(row => row.key).sort((a, b) => compareScores(a.key, b.key));
   const tied = complete ? ranked.filter(row => compareScores(row.key, ranked[0].key) === 0) : [];
-  const heading = !complete ? (counted ? "Complete all three expert sheets and import the team JSON for every table to rank the proposals." :
+  const heading = !complete ? (counted ? "Complete all three expert sheets and wait for every team’s data from Google Sheets to rank the proposals." :
       "Complete all three expert sheets for every table to rank the proposals.") :
     tied.length > 1 ? "The Chair decides between tables " + tied.map(row => row.team).join(", ") + " and gives a rubric-based reason." :
       "First launch priority · Table " + ranked[0].team + " · " + MARKETS[marketForTable(host.room, ranked[0].team)].name;
@@ -126,7 +126,7 @@ function scoresTable() {
     (counted ? "<td>" + number(row.game) + "</td><td>" + number(row.final) + "</td>" : "<td>" + number(row.jury?.total) + "</td>") + "</tr>").join("");
   return `<div class="pv-panel">
     <h3>Board ranking</h3><p>${esc(heading)}</p>
-    ${counted ? '<p class="pv-inline-note">Final = ' + Math.round((1 - tuning().gameShare) * 100) + "% experts + " + Math.round(tuning().gameShare * 100) + "% game result. The game result comes from the imported team JSON.</p>" : ""}
+    ${counted ? '<p class="pv-inline-note">Final = ' + Math.round((1 - tuning().gameShare) * 100) + "% experts + " + Math.round(tuning().gameShare * 100) + "% game result. The game result comes from the team data in Google Sheets.</p>" : ""}
     <table class="pv-scores"><thead><tr><th scope="col">Market</th><th scope="col">Written</th><th scope="col">Oral</th>${counted ? '<th scope="col">Game</th><th scope="col">Final</th>' : '<th scope="col">Total</th>'}</tr></thead>
     <tbody>${body}</tbody></table>
     <div class="pv-actions pv-file-actions">${button("Export scores CSV", "host-scores")}${button("Export for Excel", "host-scores-ru")}</div></div>`;
@@ -198,12 +198,12 @@ export function hostClock(root, now) {
     R1: "Release the Singapore baseline and assigned market. Remind teams to build their own CAGE.",
     R2: "The selected profile gets a customer signal and a choice of evidence packages.",
     R3: "Release local candidate files and ask for learning and commitment thresholds.",
-    R4: "Explain what the scoped review buys. Save a JSON checkpoint before the break.",
+    R4: "Explain what the scoped review buys. Everything is saved in Google Sheets as the teams write.",
     R5: "Each profile receives a different rival move. Ask how the team now competes.",
     R7: "Each team chooses what to fund and states the condition for its next commitment.",
-    BREAK: "Export the checkpoint, then reopen the same room and table at the next seminar.",
+    BREAK: "Nothing to export: the data is in Google Sheets. Teams can reopen the page after the break.",
     R6: bulletin ? BULLETINS.A : BULLETINS.B + " Each team sees its customer-specific note.",
-    PREP: "Collect team JSON or written logs, finish the written checks and give teams the pitch order.",
+    PREP: "Read the Board Briefs in the Brief sheet, finish the written checks and give teams the pitch order.",
     PITCH: "One four-minute slot per team. " + QUESTION,
     DEBRIEF: "Reconcile all scores. Announce the selected next investment and its live-launch condition.",
     END: "Session complete. Export the ranking and keep the team journals."

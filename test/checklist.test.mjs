@@ -35,7 +35,7 @@ test("Ticking that the tables are in moves on to waiting for the game, then to t
   const running = hostChecklist({room, now: at(40), grades: {}, records: {}, joined: true});
   assert.equal(step(running, "game").state, "now");
   assert.equal(step(running, "game").detail, "The rounds are running.");
-  assert.match(running.next, /checkpoint JSON at the break/);
+  assert.match(running.next, /saved in Google Sheets/);
 });
 
 test("A finished game or team data in the sheet counts as proof that the tables joined", () => {

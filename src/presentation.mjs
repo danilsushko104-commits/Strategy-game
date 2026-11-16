@@ -101,7 +101,7 @@ export function csvCell(value, separator = ",") {
   return quote ? '"' + text.replaceAll('"', '""') + '"' : text;
 }
 
-// The score table as CSV. `records` are the imported team JSON files: the game result comes from them.
+// The score table as CSV. `records` are the teams' games read from Google Sheets: the game result comes from them.
 // `russianExcel` writes ";" separators and decimal commas, which is what Excel with Russian regional
 // settings expects. A BOM makes Excel read the file as UTF-8.
 export function scoresCsv(room, gradesByTeam, {russianExcel = false, records = {}} = {}) {
@@ -115,7 +115,7 @@ export function scoresCsv(room, gradesByTeam, {russianExcel = false, records = {
     const experts = [0, 1, 2].map(expert => grades[expert]?.complete ? number(scoreExpert(grades[expert]).total) : "");
     const done = [0, 1, 2].filter(expert => grades[expert]?.complete).length;
     const status = row.key ? (row.tied ? "tied: the Chair decides" : "complete") :
-      row.jury ? "pending: import the team JSON for the game result" : "pending: " + done + " of 3 expert sheets complete";
+      row.jury ? "pending: waiting for the team’s data in Google Sheets" : "pending: " + done + " of 3 expert sheets complete";
     const jury = row.jury ? [row.jury.written, row.jury.oral, row.jury.uppsala].map(number) : ["", "", ""];
     const totals = counted ? [row.jury ? number(row.jury.total) : "", row.game === null ? "" : number(row.game), row.final === null ? "" : number(row.final)] :
       [row.jury ? number(row.jury.total) : ""];
