@@ -25,7 +25,7 @@ test("Before the seminar the facilitator is told to get the tables in", () => {
   assert.equal(result.phase.id, "SETUP");
   assert.equal(states(result), "done now later later later later");
   assert.match(result.next, /Ask every team to open the page/);
-  assert.equal(step(result, "files").detail, "0 of 4 tables imported with all 7 decisions. Missing: table 1, table 2, table 3, table 4.");
+  assert.equal(step(result, "files").detail, "0 of 4 tables have all 7 decisions. Missing: table 1, table 2, table 3, table 4.");
 });
 
 test("Ticking that the tables are in moves on to waiting for the game, then to the rounds", () => {
@@ -38,19 +38,19 @@ test("Ticking that the tables are in moves on to waiting for the game, then to t
   assert.match(running.next, /checkpoint JSON at the break/);
 });
 
-test("A finished game or an imported file counts as proof that the tables joined", () => {
+test("A finished game or team data in the sheet counts as proof that the tables joined", () => {
   assert.equal(step(hostChecklist({room, now: at(40), grades: {}, records: {}, joined: false}), "joined").done, false, "a running game alone proves nothing");
-  assert.equal(step(hostChecklist({room, now: at(40), grades: {}, records: {2: record(2, 4)}, joined: false}), "joined").done, true, "an imported checkpoint does");
+  assert.equal(step(hostChecklist({room, now: at(40), grades: {}, records: {2: record(2, 4)}, joined: false}), "joined").done, true, "team data that has arrived does");
   assert.equal(step(hostChecklist({room, now: at(125), grades: {}, records: {}, joined: false}), "joined").done, true, "a finished game does");
 });
 
-test("After R7 the next job is collecting the team files, and a checkpoint is reported as incomplete", () => {
+test("After R7 the next job is waiting for the team data, and a table still playing is reported", () => {
   const result = hostChecklist({room, now: at(125), grades: {}, records: {1: record(1, 7), 2: record(2, 4)}, joined: false});
   assert.equal(result.phase.id, "PREP");
   assert.equal(step(result, "game").done, true);
   assert.equal(step(result, "files").state, "now");
-  assert.equal(step(result, "files").detail, "1 of 4 tables imported with all 7 decisions. Missing: table 2, table 3, table 4. Incomplete (a checkpoint): table 2.");
-  assert.match(result.next, /Download team JSON/);
+  assert.equal(step(result, "files").detail, "1 of 4 tables have all 7 decisions. Missing: table 2, table 3, table 4. Still playing: table 2.");
+  assert.match(result.next, /appear here from Google Sheets/);
 });
 
 test("Expert sheets are counted and the ranking step opens when everything is in", () => {

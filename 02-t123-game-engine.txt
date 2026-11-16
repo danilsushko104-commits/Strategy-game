@@ -563,14 +563,14 @@ function hostChecklist({room, now, grades, records, joined}) {
   const steps = [
     {id: "room", title: "Room created", done: true,
       detail: "Show the room code and the table assignment to the students."},
-    // An imported team file, or a finished game, proves that the tables were in.
+    // Team data in the sheet, or a finished game, proves that the tables were in.
     {id: "joined", title: "Every table has joined", done: !!joined || finished || TEAMS.some(team => records?.[team]),
       detail: "Each team opens the page and enters the room code with its table number. This page cannot see the teams, so tick the box once you have checked."},
     {id: "game", title: "The game is played", done: finished,
       detail: finished ? "All seven rounds are over." : phase.id === "SETUP" ? "R1 has not started yet." : "The rounds are running."},
-    {id: "files", title: "Team files collected", done: counted ? full.length === TEAMS.length : true,
-      detail: (counted ? "" : "Optional without a game result. ") + full.length + " of " + TEAMS.length + " tables imported with all " + ROUNDS.length + " decisions" +
-        (missing.length ? ". Missing: " + list(missing) : "") + (partial.length ? ". Incomplete (a checkpoint): " + list(partial) : "") + "."},
+    {id: "files", title: "Team data from Google Sheets", done: counted ? full.length === TEAMS.length : true,
+      detail: (counted ? "" : "Optional without a game result. ") + full.length + " of " + TEAMS.length + " tables have all " + ROUNDS.length + " decisions" +
+        (missing.length ? ". Missing: " + list(missing) : "") + (partial.length ? ". Still playing: " + list(partial) : "") + "."},
     {id: "sheets", title: "Expert sheets complete", done: sheets === TEAMS.length * 3,
       detail: sheets + " of " + TEAMS.length * 3 + " sheets are marked complete (three experts for each of four tables)."},
     {id: "ranking", title: "Ranking and export", done: ranked,
@@ -580,7 +580,7 @@ function hostChecklist({room, now, grades, records, joined}) {
   const next = {
     joined: "Ask every team to open the page and join with the room code and its table number.",
     game: phase.id === "SETUP" ? "Wait for R1. Explain the mandate and run the practice example." : "Run the seminar. Teams download a checkpoint JSON at the break.",
-    files: "After R7 each team presses Download team JSON. Import every file in the score sheets section.",
+    files: "Teams finish R7 and their decisions and notes appear here from Google Sheets. Press Refresh now if you do not want to wait.",
     sheets: "The three experts complete their score sheets for every table.",
     ranking: "Check the ranking and export the CSV."
   }[steps[current]?.id] ?? "Everything is done. Keep the team journals and the exported scores.";
@@ -784,10 +784,6 @@ function hostKey(room) {
   return prefix + ":" + room + ":facilitator";
 }
 
-function backupKey(room, team) {
-  return prefix + ":" + room + ":backup:" + team;
-}
-
 function syncKey(room, team) {
   return prefix + ":" + room + ":sync:" + team;
 }
@@ -858,7 +854,7 @@ function storeRecord(record) {
 
 function clearSlot(room, team) {
   const key = teamKey(room, team);
-  for (const name of [key, ...SNAPSHOTS.map(slot => key + ":" + slot), backupKey(room, team), syncKey(room, team)]) {
+  for (const name of [key, ...SNAPSHOTS.map(slot => key + ":" + slot), syncKey(room, team)]) {
     putStored(name, null);
     void mirrorPut(name, null);
   }
@@ -866,7 +862,7 @@ function clearSlot(room, team) {
 
 // ---- Second copy in IndexedDB -------------------------------------------------------------
 // Protects against failed or partial localStorage writes, quota errors and damaged values.
-// Browsers usually clear both stores together, so a downloaded JSON file remains the real backup.
+// Browsers usually clear both stores together, so the real copy is the one in Google Sheets.
 
 const mirrorState = {ok: null};
 let mirrorDatabase = null;
@@ -943,7 +939,7 @@ async function recoveryOptions(room, team) {
   return options.sort((a, b) => b.rounds - a.rounds);
 }
 
-// ---- Persistence and backup bookkeeping ----------------------------------------------------
+// ---- Persistence ----------------------------------------------------------------------------
 
 const persistence = {state: "unknown"};
 
@@ -962,36 +958,48 @@ function persistenceState() {
   return persistence.state;
 }
 
-function readBackup(room, team) {
+// What the remote sheet has confirmed for one table and endpoint: how many decisions, and a fingerprint of
+// every worksheet note and of the Board Brief as last sent.
+function readSyncState(room, team, endpoint) {
+  const empty = {count: 0, notes: {}, brief: null};
   try {
-    const value = JSON.parse(getStored(backupKey(room, team)));
-    return Number.isInteger(value?.rounds) && Number.isFinite(value.at) ? value : null;
+    const value = JSON.parse(getStored(syncKey(room, team)));
+    if (value?.endpoint !== endpoint) return empty;
+    return {
+      count: Number.isInteger(value.count) && value.count >= 0 ? value.count : 0,
+      notes: value.notes && typeof value.notes === "object" ? value.notes : {},
+      brief: typeof value.brief === "string" ? value.brief : null
+    };
+  } catch {
+    return empty;
+  }
+}
+
+function writeSyncState(room, team, endpoint, {count, notes, brief}) {
+  putStored(syncKey(room, team), JSON.stringify({endpoint, count, notes, brief}));
+}
+
+function readSynced(room, team, endpoint) {
+  return readSyncState(room, team, endpoint).count;
+}
+
+function writeSynced(room, team, endpoint, count) {
+  const state = readSyncState(room, team, endpoint);
+  writeSyncState(room, team, endpoint, {...state, count});
+}
+
+// The room the facilitator opened, remembered so that a reload without a connection still finds it.
+function readConfigCache() {
+  try {
+    const value = JSON.parse(getStored(prefix + ":config"));
+    return typeof value?.room === "string" ? value : null;
   } catch {
     return null;
   }
 }
 
-function markBackup(room, team, rounds, at) {
-  putStored(backupKey(room, team), JSON.stringify({rounds, at}));
-}
-
-// How many of a table's decisions the remote log has confirmed, for one endpoint.
-function readSynced(room, team, endpoint) {
-  try {
-    const value = JSON.parse(getStored(syncKey(room, team)));
-    return value?.endpoint === endpoint && Number.isInteger(value.count) && value.count >= 0 ? value.count : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function writeSynced(room, team, endpoint, count) {
-  putStored(syncKey(room, team), JSON.stringify({endpoint, count}));
-}
-
-// How far the last downloaded backup trails behind the locked decisions.
-function backupBehind(decisions, backup) {
-  return Math.max(0, decisions - (backup?.rounds ?? 0));
+function writeConfigCache(config) {
+  putStored(prefix + ":config", JSON.stringify({room: config.room, start: config.start}));
 }
 
 function activeTeam(value) {
@@ -1023,28 +1031,28 @@ function withSaveLock(key, change) {
 function knownTable(value) {
   return value && TEAMS.includes(value.team) && (value.room === "PRACTICE" || roomStart(value.room) !== null);
 }
-return { storageAvailable, getStored, putStored, teamKey, hostKey, SaveError, readSlot, storeRecord, clearSlot, mirrorPut, mirrorGet, mirrorStatus, recoveryOptions, requestPersistence, persistenceState, readBackup, markBackup, readSynced, writeSynced, backupBehind, activeTeam, newId, newRecord, withSaveLock, knownTable };
+return { storageAvailable, getStored, putStored, teamKey, hostKey, SaveError, readSlot, storeRecord, clearSlot, mirrorPut, mirrorGet, mirrorStatus, recoveryOptions, requestPersistence, persistenceState, readSyncState, writeSyncState, readSynced, writeSynced, readConfigCache, writeConfigCache, activeTeam, newId, newRecord, withSaveLock, knownTable };
 })();
 
 // src/sync.mjs
 const __omf_sync = (() => {
 const { ROUNDS } = __omf_scenario;
-const { replay, gameScore } = __omf_rules;
+const { replay, gameScore, validateRecord } = __omf_rules;
 const { hash53 } = __omf_hash;
 const { trueNow, clockStatus } = __omf_clock;
-const { readSynced, writeSynced } = __omf_storage;
+const { readSyncState, writeSyncState, newRecord } = __omf_storage;
 // Optional second copy of every locked decision in a Google Sheet (Apps Script web app).
 // The game never depends on it: decisions are always saved locally first, the number of confirmed
 // decisions is remembered per table, and a failed send is simply retried with the same events.
 // Events carry a deterministic id, so the sheet can drop duplicates and a re-send is always safe.
 
 const SEPARATOR = "␟";
-const state = {endpoint: "", status: "off", total: 0, pending: 0, error: ""};
+const state = {endpoint: "", status: "off", total: 0, pending: 0, pendingNotes: 0, error: ""};
 let sending = null;
 
 function configureSync(url) {
   const endpoint = String(url || "").trim();
-  state.endpoint = /^https:\/\/[^\s]+$/.test(endpoint) ? endpoint : "";
+  state.endpoint = /^(https:\/\/[^\s]+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/[^\s]*)$/.test(endpoint) ? endpoint : "";
   state.status = state.endpoint ? "idle" : "off";
   state.error = "";
 }
@@ -1081,43 +1089,81 @@ function confirmedPrefix(events, reply) {
   return count;
 }
 
-async function transmit(events, request) {
-  const body = JSON.stringify({
-    v: 1, sentAt: new Date(trueNow()).toISOString(), clockOffsetMs: Math.round(clockStatus().offset), events
-  });
-  const options = {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, body, redirect: "follow"};
+// One request to the sheet. A reply that cannot be read from this page (or no network) falls back to an opaque
+// request; the result then says it was not confirmed.
+async function post(payload, request) {
+  const options = {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, body: JSON.stringify(payload), redirect: "follow"};
   try {
     const response = await request(state.endpoint, options);
     if (!response.ok) throw new Error("The sheet answered with status " + response.status + ".");
     const reply = await response.json();
     if (!reply?.ok) throw new Error(reply?.error || "The sheet rejected the request.");
-    return {confirmed: confirmedPrefix(events, reply), readable: true, rejected: reply.rejected || []};
+    return {reply, readable: true};
   } catch (error) {
     if (!(error instanceof TypeError)) throw error;
-    // Offline, or the reply cannot be read from this origin. A request without a readable reply
-    // can still reach the sheet: send once more as an opaque request and report it as unconfirmed.
     await request(state.endpoint, {...options, mode: "no-cors"});
-    return {confirmed: events.length, readable: false, rejected: []};
+    return {reply: null, readable: false};
   }
+}
+
+const envelope = () => ({v: 1, sentAt: new Date(trueNow()).toISOString(), clockOffsetMs: Math.round(clockStatus().offset)});
+
+// Worksheet notes and the Board Brief that changed since they were last sent.
+function buildNotesPayload(record, sent) {
+  const items = [];
+  const hashes = {};
+  const at = new Date(trueNow()).toISOString();
+  for (const [key, value] of Object.entries(record.notes)) {
+    const hash = hash53(value);
+    hashes[key] = hash;
+    if (sent.notes[key] !== hash) {
+      const [round, field] = key.split(".");
+      items.push({round, field, text: value, at});
+    }
+  }
+  const briefHash = hash53(record.brief);
+  const briefChanged = sent.brief !== briefHash && (record.brief !== "" || sent.brief !== null);
+  return {items, brief: briefChanged ? {text: record.brief, at} : null, hashes, briefHash};
 }
 
 async function run(record, request, force) {
   try {
     const events = buildEvents(record);
-    const done = force ? 0 : readSynced(record.room, record.team, state.endpoint);
-    const unsent = events.slice(done);
+    let sent = force ? {count: 0, notes: {}, brief: null} : readSyncState(record.room, record.team, state.endpoint);
+    const unsent = events.slice(sent.count);
+    const notes = buildNotesPayload(record, sent);
+    const notesWaiting = notes.items.length + (notes.brief ? 1 : 0);
     state.total = events.length;
     state.pending = unsent.length;
-    if (!unsent.length) {
-      state.status = events.length ? (state.status === "unconfirmed" ? "unconfirmed" : "ok") : "idle";
+    state.pendingNotes = notesWaiting;
+    if (!unsent.length && !notesWaiting) {
+      state.status = events.length || Object.keys(record.notes).length ? (state.status === "unconfirmed" ? "unconfirmed" : "ok") : "idle";
       return syncStatus();
     }
     state.status = "sending";
-    const result = await transmit(unsent, request);
-    writeSynced(record.room, record.team, state.endpoint, done + result.confirmed);
-    state.pending = unsent.length - result.confirmed;
-    state.error = result.rejected.length ? "The sheet rejected " + result.rejected.length + " decision(s)." : "";
-    state.status = state.pending ? "retry" : result.readable ? "ok" : "unconfirmed";
+    let readable = true;
+    let rejected = 0;
+
+    if (unsent.length) {
+      const result = await post({...envelope(), events: unsent}, request);
+      readable = readable && result.readable;
+      const confirmed = result.readable ? confirmedPrefix(unsent, result.reply) : unsent.length;
+      rejected += result.readable ? (result.reply.rejected || []).length : 0;
+      sent = {...sent, count: sent.count + confirmed};
+      writeSyncState(record.room, record.team, state.endpoint, sent);
+      state.pending = unsent.length - confirmed;
+    }
+    if (notesWaiting && !state.pending) {
+      const result = await post({...envelope(), type: "notes", room: record.room, team: record.team, market: record.market, session: record.session,
+        items: notes.items, ...(notes.brief ? {brief: notes.brief} : {})}, request);
+      readable = readable && result.readable;
+      rejected += result.readable ? (result.reply.rejected || []).length : 0;
+      sent = {...sent, notes: notes.hashes, brief: notes.briefHash};
+      writeSyncState(record.room, record.team, state.endpoint, sent);
+      state.pendingNotes = 0;
+    }
+    state.error = rejected ? "The sheet rejected " + rejected + " item(s)." : "";
+    state.status = state.pending || state.pendingNotes ? "retry" : readable ? "ok" : "unconfirmed";
   } catch (error) {
     state.status = "retry";
     state.error = error.message || "The sheet could not be reached.";
@@ -1125,7 +1171,7 @@ async function run(record, request, force) {
   return syncStatus();
 }
 
-// Sends every decision the sheet has not confirmed yet. Safe to call as often as needed;
+// Sends every decision and note the sheet has not confirmed yet. Safe to call as often as needed;
 // a call that arrives while one is running joins it.
 function flushSync(record, {request = globalThis.fetch, force = false} = {}) {
   if (!state.endpoint || record.mode !== "live") return Promise.resolve(syncStatus());
@@ -1134,17 +1180,70 @@ function flushSync(record, {request = globalThis.fetch, force = false} = {}) {
 }
 
 function syncSummary() {
-  const {status, total, pending, error} = state;
+  const {status, total, pending, pendingNotes, error} = state;
+  const waiting = [pending ? pending + (pending === 1 ? " decision" : " decisions") : "", pendingNotes ? pendingNotes + (pendingNotes === 1 ? " note" : " notes") : ""].filter(Boolean).join(" and ");
   const text = {
-    ok: "Google Sheets: all " + total + (total === 1 ? " decision is" : " decisions are") + " saved.",
+    ok: "Google Sheets: all " + total + (total === 1 ? " decision is" : " decisions are") + " saved with your notes.",
     sending: "Google Sheets: sending…",
-    idle: "Google Sheets: connected. Decisions are sent when they are locked.",
+    idle: "Google Sheets: connected. Decisions and notes are sent as you write.",
     unconfirmed: "Google Sheets: sent, but the browser cannot read the reply. Check the sheet, or send again.",
-    retry: "Google Sheets: " + pending + (pending === 1 ? " decision is" : " decisions are") + " waiting to be sent. Retrying automatically." + (error ? " (" + error + ")" : "")
+    retry: "Google Sheets: " + waiting + " waiting to be sent. Retrying automatically." + (error ? " (" + error + ")" : "")
   }[status];
   return text ? {state: status, text} : null;
 }
-return { configureSync, syncStatus, buildEvents, flushSync, syncSummary };
+
+// ---- Reading from the sheet ------------------------------------------------------------------------------
+// The sheet is the only store, so a page that has no local save asks it (a team continuing on another device),
+// the facilitator's page reads every team from it, and the room and start time come from its Settings.
+
+function syncEnabled() {
+  return !!state.endpoint;
+}
+
+async function read(query, request) {
+  const url = state.endpoint + (state.endpoint.includes("?") ? "&" : "?") + new URLSearchParams(query);
+  const response = await request(url, {method: "GET", redirect: "follow", cache: "no-store"});
+  if (!response.ok) throw new Error("The sheet answered with status " + response.status + ".");
+  const reply = await response.json();
+  if (!reply?.ok) throw new Error(reply?.error || "The sheet could not answer.");
+  return reply;
+}
+
+// {room, start}: what the facilitator opened. Empty room means nothing is open yet.
+async function fetchConfig({request = globalThis.fetch} = {}) {
+  const reply = await read({action: "config"}, request);
+  return {room: reply.room || "", start: reply.start || ""};
+}
+
+async function fetchTeam(room, team, {request = globalThis.fetch} = {}) {
+  return read({action: "team", room, team}, request);
+}
+
+async function fetchRoom(room, token, {request = globalThis.fetch} = {}) {
+  return read({action: "room", room, token}, request);
+}
+
+// The facilitator opens a room: it is stored in the sheet's Settings for the teams to read.
+async function publishRoom(room, start, token, {request = globalThis.fetch} = {}) {
+  const response = await request(state.endpoint, {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, redirect: "follow",
+    body: JSON.stringify({v: 1, type: "room", token, room, start: new Date(start).toISOString()})});
+  const reply = await response.json();
+  if (!reply?.ok) throw new Error(reply?.error || "The sheet did not accept the room.");
+  return reply;
+}
+
+// A table's saved game rebuilt from what the sheet holds. The record is checked like any other save.
+function recordFromPayload(payload, market) {
+  const notes = {};
+  for (const item of payload.notes || []) notes[item.round + "." + item.field] = item.text;
+  const base = newRecord("live", payload.room, payload.team, market);
+  return validateRecord({
+    ...base, notes, brief: payload.brief?.text ?? "",
+    history: (payload.decisions || []).map(item => ({round: item.round, choice: item.choice, method: item.method, at: item.at,
+      evidence: item.evidence, tradeoff: item.tradeoff, ...(item.problem ? {problem: item.problem} : {})}))
+  });
+}
+return { configureSync, syncStatus, buildEvents, buildNotesPayload, flushSync, syncSummary, syncEnabled, fetchConfig, fetchTeam, fetchRoom, publishRoom, recordFromPayload };
 })();
 
 window.__omfModules = Object.assign(window.__omfModules || {}, { rules: __omf_rules, progress: __omf_progress, clock: __omf_clock, storage: __omf_storage, sync: __omf_sync });

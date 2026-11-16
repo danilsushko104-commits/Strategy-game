@@ -544,14 +544,14 @@ export function hostChecklist({room, now, grades, records, joined}) {
   const steps = [
     {id: "room", title: "Room created", done: true,
       detail: "Show the room code and the table assignment to the students."},
-    // An imported team file, or a finished game, proves that the tables were in.
+    // Team data in the sheet, or a finished game, proves that the tables were in.
     {id: "joined", title: "Every table has joined", done: !!joined || finished || TEAMS.some(team => records?.[team]),
       detail: "Each team opens the page and enters the room code with its table number. This page cannot see the teams, so tick the box once you have checked."},
     {id: "game", title: "The game is played", done: finished,
       detail: finished ? "All seven rounds are over." : phase.id === "SETUP" ? "R1 has not started yet." : "The rounds are running."},
-    {id: "files", title: "Team files collected", done: counted ? full.length === TEAMS.length : true,
-      detail: (counted ? "" : "Optional without a game result. ") + full.length + " of " + TEAMS.length + " tables imported with all " + ROUNDS.length + " decisions" +
-        (missing.length ? ". Missing: " + list(missing) : "") + (partial.length ? ". Incomplete (a checkpoint): " + list(partial) : "") + "."},
+    {id: "files", title: "Team data from Google Sheets", done: counted ? full.length === TEAMS.length : true,
+      detail: (counted ? "" : "Optional without a game result. ") + full.length + " of " + TEAMS.length + " tables have all " + ROUNDS.length + " decisions" +
+        (missing.length ? ". Missing: " + list(missing) : "") + (partial.length ? ". Still playing: " + list(partial) : "") + "."},
     {id: "sheets", title: "Expert sheets complete", done: sheets === TEAMS.length * 3,
       detail: sheets + " of " + TEAMS.length * 3 + " sheets are marked complete (three experts for each of four tables)."},
     {id: "ranking", title: "Ranking and export", done: ranked,
@@ -561,7 +561,7 @@ export function hostChecklist({room, now, grades, records, joined}) {
   const next = {
     joined: "Ask every team to open the page and join with the room code and its table number.",
     game: phase.id === "SETUP" ? "Wait for R1. Explain the mandate and run the practice example." : "Run the seminar. Teams download a checkpoint JSON at the break.",
-    files: "After R7 each team presses Download team JSON. Import every file in the score sheets section.",
+    files: "Teams finish R7 and their decisions and notes appear here from Google Sheets. Press Refresh now if you do not want to wait.",
     sheets: "The three experts complete their score sheets for every table.",
     ranking: "Check the ranking and export the CSV."
   }[steps[current]?.id] ?? "Everything is done. Keep the team journals and the exported scores.";

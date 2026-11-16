@@ -44,10 +44,6 @@ export function hostKey(room) {
   return prefix + ":" + room + ":facilitator";
 }
 
-function backupKey(room, team) {
-  return prefix + ":" + room + ":backup:" + team;
-}
-
 function syncKey(room, team) {
   return prefix + ":" + room + ":sync:" + team;
 }
@@ -118,7 +114,7 @@ export function storeRecord(record) {
 
 export function clearSlot(room, team) {
   const key = teamKey(room, team);
-  for (const name of [key, ...SNAPSHOTS.map(slot => key + ":" + slot), backupKey(room, team), syncKey(room, team)]) {
+  for (const name of [key, ...SNAPSHOTS.map(slot => key + ":" + slot), syncKey(room, team)]) {
     putStored(name, null);
     void mirrorPut(name, null);
   }
@@ -126,7 +122,7 @@ export function clearSlot(room, team) {
 
 // ---- Second copy in IndexedDB -------------------------------------------------------------
 // Protects against failed or partial localStorage writes, quota errors and damaged values.
-// Browsers usually clear both stores together, so a downloaded JSON file remains the real backup.
+// Browsers usually clear both stores together, so the real copy is the one in Google Sheets.
 
 const mirrorState = {ok: null};
 let mirrorDatabase = null;
@@ -203,7 +199,7 @@ export async function recoveryOptions(room, team) {
   return options.sort((a, b) => b.rounds - a.rounds);
 }
 
-// ---- Persistence and backup bookkeeping ----------------------------------------------------
+// ---- Persistence ----------------------------------------------------------------------------
 
 const persistence = {state: "unknown"};
 
@@ -222,36 +218,48 @@ export function persistenceState() {
   return persistence.state;
 }
 
-export function readBackup(room, team) {
+// What the remote sheet has confirmed for one table and endpoint: how many decisions, and a fingerprint of
+// every worksheet note and of the Board Brief as last sent.
+export function readSyncState(room, team, endpoint) {
+  const empty = {count: 0, notes: {}, brief: null};
   try {
-    const value = JSON.parse(getStored(backupKey(room, team)));
-    return Number.isInteger(value?.rounds) && Number.isFinite(value.at) ? value : null;
+    const value = JSON.parse(getStored(syncKey(room, team)));
+    if (value?.endpoint !== endpoint) return empty;
+    return {
+      count: Number.isInteger(value.count) && value.count >= 0 ? value.count : 0,
+      notes: value.notes && typeof value.notes === "object" ? value.notes : {},
+      brief: typeof value.brief === "string" ? value.brief : null
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export function writeSyncState(room, team, endpoint, {count, notes, brief}) {
+  putStored(syncKey(room, team), JSON.stringify({endpoint, count, notes, brief}));
+}
+
+export function readSynced(room, team, endpoint) {
+  return readSyncState(room, team, endpoint).count;
+}
+
+export function writeSynced(room, team, endpoint, count) {
+  const state = readSyncState(room, team, endpoint);
+  writeSyncState(room, team, endpoint, {...state, count});
+}
+
+// The room the facilitator opened, remembered so that a reload without a connection still finds it.
+export function readConfigCache() {
+  try {
+    const value = JSON.parse(getStored(prefix + ":config"));
+    return typeof value?.room === "string" ? value : null;
   } catch {
     return null;
   }
 }
 
-export function markBackup(room, team, rounds, at) {
-  putStored(backupKey(room, team), JSON.stringify({rounds, at}));
-}
-
-// How many of a table's decisions the remote log has confirmed, for one endpoint.
-export function readSynced(room, team, endpoint) {
-  try {
-    const value = JSON.parse(getStored(syncKey(room, team)));
-    return value?.endpoint === endpoint && Number.isInteger(value.count) && value.count >= 0 ? value.count : 0;
-  } catch {
-    return 0;
-  }
-}
-
-export function writeSynced(room, team, endpoint, count) {
-  putStored(syncKey(room, team), JSON.stringify({endpoint, count}));
-}
-
-// How far the last downloaded backup trails behind the locked decisions.
-export function backupBehind(decisions, backup) {
-  return Math.max(0, decisions - (backup?.rounds ?? 0));
+export function writeConfigCache(config) {
+  putStored(prefix + ":config", JSON.stringify({room: config.room, start: config.start}));
 }
 
 export function activeTeam(value) {
