@@ -408,23 +408,44 @@ export function validateRecord(record) {
   return clean;
 }
 
+function checkedCount(expert, row) {
+  const checks = expert?.checks?.[row];
+  return Array.isArray(checks) ? checks.slice(0, 4).filter(check => check === true).length : 0;
+}
+
+// One expert's points: every ticked check is worth a quarter of its row's weight.
+export function scoreExpert(expert) {
+  let written = 0;
+  let oral = 0;
+  let uppsala = 0;
+  RUBRIC.forEach(([section, name, weight], index) => {
+    const points = checkedCount(expert, index) * weight / 4;
+    if (section === "Written") written += points;
+    else oral += points;
+    if (name === "Uppsala and entry route") uppsala += points;
+  });
+  return {written, oral, uppsala, total: written + oral};
+}
+
 export function scoreJury(submissions) {
   if (!Array.isArray(submissions) || submissions.length !== 3 || ![0, 1, 2].every(index => submissions[index]?.complete)) return null;
   let written = 0;
   let oral = 0;
   let uppsala = 0;
   for (const expert of submissions) {
-    RUBRIC.forEach(([section, name, weight], index) => {
-      const checked = (expert.checks?.[index] || []).slice(0, 4).filter(check => check === true).length;
-      const points = checked * weight / 4;
-      if (section === "Written") written += points;
-      else oral += points;
-      if (name === "Uppsala and entry route") uppsala += points;
-    });
+    const score = scoreExpert(expert);
+    written += score.written;
+    oral += score.oral;
+    uppsala += score.uppsala;
   }
   return {written: written / 3, oral: oral / 3, uppsala: uppsala / 3, total: (written + oral) / 3};
 }
 
 export function compareScores(a, b) {
   return b.total - a.total || b.oral - a.oral || b.uppsala - a.uppsala;
+}
+
+// Competition ranking: equal scores share a rank. Entries without a score have no rank.
+export function rankScores(scores) {
+  return scores.map(score => score ? 1 + scores.filter(other => other && compareScores(other, score) < 0).length : null);
 }

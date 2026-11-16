@@ -1,7 +1,7 @@
 import { CONFIG, MARKETS, BULLETINS, RUBRIC, QUESTION } from './scenario.mjs';
 import { TEAMS, SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, validateRecord, scoreJury, compareScores } from './rules.mjs';
 import { hostKey, getStored, putStored } from './storage.mjs';
-import { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport } from './presentation.mjs';
+import { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, scoresCsv } from './presentation.mjs';
 import { trueNow } from './clock.mjs';
 
 const activeKey = hostKey("active");
@@ -76,7 +76,7 @@ function scoresTable() {
     <h3>Board ranking</h3><p>${esc(heading)}</p>
     <table class="pv-scores"><thead><tr><th scope="col">Market</th><th scope="col">Written</th><th scope="col">Oral</th><th scope="col">Total</th></tr></thead>
     <tbody>${rows}</tbody></table>
-    <div class="pv-actions pv-file-actions">${button("Export scores CSV", "host-scores")}</div></div>`;
+    <div class="pv-actions pv-file-actions">${button("Export scores CSV", "host-scores")}${button("CSV for Russian Excel (;)", "host-scores-ru")}</div></div>`;
 }
 
 function judgeTable(team) {
@@ -158,14 +158,9 @@ export function hostClock(root, now) {
   root.querySelector("[data-host-cue]").textContent = cue;
 }
 
-function exportScores() {
-  const lines = ["table,market,written_70,oral_30,uppsala_16,total_100"];
-  for (const team of TEAMS) {
-    const score = scoresFor(team);
-    lines.push([team, MARKETS[marketForTable(host.room, team)].name].concat(score ?
-      [score.written, score.oral, score.uppsala, score.total] : ["","","",""]).join(","));
-  }
-  saveFile("revolut-" + host.room.toLowerCase() + "-scores.csv", lines.join("\n") + "\n", "text/csv;charset=utf-8");
+function exportScores(russianExcel = false) {
+  saveFile("revolut-" + host.room.toLowerCase() + "-scores" + (russianExcel ? "-excel-ru" : "") + ".csv",
+    scoresCsv(host.room, host.panel.grades, {russianExcel}), "text/csv;charset=utf-8");
 }
 
 export async function handleHostAction(id, target, ui) {
@@ -185,6 +180,7 @@ export async function handleHostAction(id, target, ui) {
     ui.announce("Room created. Show the room code and table numbers to participants.");
     ui.render("#omf-stage-title");
   } else if (id === "host-scores") exportScores();
+  else if (id === "host-scores-ru") exportScores(true);
 }
 
 export function updateHostField(input, render) {
