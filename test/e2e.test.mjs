@@ -179,8 +179,9 @@ test("After the session the team sees its game result, and the facilitator panel
     await page.click("button[data-action=host]");
     const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click('button:has-text("Import team JSON")')]);
     await chooser.setFiles(file);
+    // The table is on the page before the file has been read, so wait for the import to finish.
+    await page.locator("[data-ui=notice]", {hasText: "Imported table"}).waitFor();
     const table = page.locator(".pv-scores");
-    await table.waitFor();
     assert.match(await table.innerText(), /Game/);
     assert.match(await table.locator("tbody").innerText(), /10\.0/);
     assert.match(await page.locator(".pv-panel", {hasText: "Board ranking"}).innerText(), /20% game result/);
