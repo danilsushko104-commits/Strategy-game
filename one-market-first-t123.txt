@@ -714,10 +714,10 @@ const LEGACY = {
 // Credit deltas apply on top of the base prices in rules.mjs (PRICE). `testShift` moves the number of
 // correct answers in a full retest. The reasons are hypotheses drawn from the market facts in scenario.mjs
 // and must be confirmed by the author or a fintech specialist.
-const PROPOSAL = {
+const V3 = {
   ...LEGACY,
-  name: "proposal",
-  gameShare: 0.1,
+  name: "v3",
+  gameShare: 0.2,
   askPilotTwo: true,
   markets: {
     indonesia: {price: {alliance: -1, broaden: 1}, testShift: 0, note: "Partners can open distribution cheaply, but each extra channel across an archipelago needs more support."},
@@ -728,7 +728,7 @@ const PROPOSAL = {
   randomness: {retestSpread: 0.2, draw: null}
 };
 
-let active = LEGACY;
+let active = V3;
 
 function tuning() {
   return active;
@@ -751,14 +751,14 @@ function retestDelta(key) {
   const unit = Number.parseInt(hash53(key), 36) / 2 ** 53;
   return unit < retestSpread ? -1 : unit >= 1 - retestSpread ? 1 : 0;
 }
-return { LEGACY, PROPOSAL, tuning, useTuning, retestDelta };
+return { LEGACY, V3, tuning, useTuning, retestDelta };
 })();
 
 // src/scenario.mjs
 const __omf_scenario = (() => {
 const CONFIG = {
   game: "revolut-one-market-first",
-  version: "v2",
+  version: "v3",
   budget: 9,
   maxNote: 1800,
   maxImportBytes: 512 * 1024
@@ -1100,7 +1100,9 @@ const OUTCOMES = {
 // Fingerprint of everything a team reads or is charged for. Saves remember it, so a page that was
 // republished with different content can warn instead of silently showing other results.
 // Changes to the rule logic itself are covered by CONFIG.version.
-const CONTENT_ID = hash32(JSON.stringify([MARKETS, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, BRIEF, SINGAPORE, PRICE, SCHEDULE, OUTCOMES, CONFIG.budget]));
+const tuned = tuning();
+const CONTENT_ID = hash32(JSON.stringify([MARKETS, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, BRIEF, SINGAPORE, PRICE, SCHEDULE, OUTCOMES, CONFIG.budget,
+  tuned.name, tuned.gameShare, tuned.askPilotTwo, tuned.scoring, tuned.markets, tuned.randomness.retestSpread]));
 
 function contentMismatch(record) {
   return !!record?.content && record.content !== CONTENT_ID;
@@ -1204,7 +1206,7 @@ function optionsFor(id, state, marketId) {
         option("hold", 0, "Hold outreach", "Publish a holding statement and document the incident. The next ask can fund preparation and a later review."),
         option("targeted", state.verified ? 0 : price(marketId, "targeted"), "Correct one channel", "Correct one channel and pause all uncorrected messages. Keep one cohort. Readiness verification or the narrow mock test lets you validate the correction in that cohort."),
         option("full", (state.cohorts === 2 ? price(marketId, "fullTwo") : price(marketId, "fullOne")) - Number(state.verified),
-          "Correct every channel and retest", "Correct all planned channels and run a mock comprehension check with 20 people per cohort. Each cohort needs at least 16 correct responses. A prior prototype, preparation of approved wording or a narrowed test can improve the result.")
+          "Correct every channel and retest", "Correct all planned channels and run a mock comprehension check with 20 people per cohort. Each cohort needs at least 16 correct responses. A prior prototype, preparation of approved wording or a narrowed test can improve the result. Real tests vary: a result can land one answer above or below the expectation.")
       ];
       break;
     case "R7": {
@@ -1278,7 +1280,9 @@ function responseResult(state, selection, profile, marketId, record) {
   }
   const advantage = state.narrow ? 2 : Number(state.verified || state.research === "prototype");
   const shift = tuning().markets[marketId]?.testShift ?? 0;
-  const draw = cohort => retestDelta([record.room, record.team, "R6", cohort].join("|"));
+  // A live room fixes the draw (room, table, round). A practice table uses its own session, so rehearsals differ.
+  const seed = record.mode === "practice" ? "practice-" + record.session : record.room;
+  const draw = cohort => retestDelta([seed, record.team, "R6", cohort].join("|"));
   const clamp = value => Math.min(20, Math.max(0, value));
   const firstBase = state.narrow ? 18 : state.cohorts === 2 ? 16 + advantage : 15 + advantage;
   const firstResult = clamp(firstBase + shift + draw(1));
@@ -1546,11 +1550,27 @@ function finalScore(jury, game, share = tuning().gameShare) {
   return jury * (1 - share) + game * share;
 }
 
+// Table by table: the expert score, the game result (from the imported team JSON) and the final grade.
+// The final grade needs the game result only while the game counts towards the grade.
+function standings(grades, records = {}) {
+  const share = tuning().gameShare;
+  const rows = TEAMS.map(team => {
+    const jury = scoreJury(grades?.[team]);
+    const game = share > 0 && records?.[team] ? (gameScore(records[team])?.total ?? null) : null;
+    const ready = !!jury && (share === 0 || game !== null);
+    const final = ready ? finalScore(jury.total, game ?? 0, share) : null;
+    return {team, jury, game, final, key: ready ? {total: final, oral: jury.oral, uppsala: jury.uppsala} : null};
+  });
+  const ranks = rankScores(rows.map(row => row.key));
+  return rows.map((row, index) => ({...row, rank: ranks[index],
+    tied: !!row.key && rows.some((other, rival) => rival !== index && other.key && compareScores(other.key, row.key) === 0)}));
+}
+
 // Competition ranking: equal scores share a rank. Entries without a score have no rank.
 function rankScores(scores) {
   return scores.map(score => score ? 1 + scores.filter(other => other && compareScores(other, score) < 0).length : null);
 }
-return { SCHEDULE, TEAMS, PRICE, price, OUTCOMES, CONTENT_ID, contentMismatch, makeRoom, roomStart, marketForTable, phaseAt, initialProgress, optionsFor, pendingFact, isDraftComplete, replay, settleDeadlines, lockRound, canReadBulletinB, assertOpen, updateDraft, updateNote, updateBrief, validateRecord, scoreExpert, scoreJury, compareScores, gameScore, finalScore, rankScores };
+return { SCHEDULE, TEAMS, PRICE, price, OUTCOMES, CONTENT_ID, contentMismatch, makeRoom, roomStart, marketForTable, phaseAt, initialProgress, optionsFor, pendingFact, isDraftComplete, replay, settleDeadlines, lockRound, canReadBulletinB, assertOpen, updateDraft, updateNote, updateBrief, validateRecord, scoreExpert, scoreJury, compareScores, gameScore, finalScore, standings, rankScores };
 })();
 
 // src/clock.mjs
@@ -2020,7 +2040,8 @@ return { configureSync, syncStatus, buildEvents, flushSync, syncSummary };
 // src/presentation.mjs
 const __omf_presentation = (() => {
 const { MARKETS, ROUNDS, WORKSHEET, CONFIG, QUESTION } = __omf_scenario;
-const { OUTCOMES, TEAMS, replay, roomStart, marketForTable, scoreJury, scoreExpert, rankScores, compareScores } = __omf_rules;
+const { OUTCOMES, TEAMS, replay, roomStart, marketForTable, scoreExpert, standings } = __omf_rules;
+const { tuning } = __omf_tuning;
 function esc(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
@@ -2116,23 +2137,25 @@ function csvCell(value, separator = ",") {
   return quote ? '"' + text.replaceAll('"', '""') + '"' : text;
 }
 
-// The score table as CSV. `russianExcel` writes ";" separators and decimal commas, which is what
-// Excel with Russian regional settings expects. A BOM makes Excel read the file as UTF-8.
-function scoresCsv(room, gradesByTeam, {russianExcel = false} = {}) {
+// The score table as CSV. `records` are the imported team JSON files: the game result comes from them.
+// `russianExcel` writes ";" separators and decimal commas, which is what Excel with Russian regional
+// settings expects. A BOM makes Excel read the file as UTF-8.
+function scoresCsv(room, gradesByTeam, {russianExcel = false, records = {}} = {}) {
   const separator = russianExcel ? ";" : ",";
   const number = value => (russianExcel ? value.toFixed(1).replace(".", ",") : value.toFixed(1));
-  const scores = TEAMS.map(team => scoreJury(gradesByTeam[team]));
-  const ranks = rankScores(scores);
-  const header = ["rank", "table", "market", "written_70", "oral_30", "uppsala_16", "total_100", "expert1_total", "expert2_total", "expert3_total", "status"];
-  const lines = [header].concat(TEAMS.map((team, index) => {
-    const grades = Array.isArray(gradesByTeam[team]) ? gradesByTeam[team] : [];
-    const score = scores[index];
+  const counted = tuning().gameShare > 0;
+  const header = ["rank", "table", "market", "written_70", "oral_30", "uppsala_16"]
+    .concat(counted ? ["expert_total_100", "game_100", "final_100"] : ["total_100"], ["expert1_total", "expert2_total", "expert3_total", "status"]);
+  const lines = [header].concat(standings(gradesByTeam, records).map(row => {
+    const grades = Array.isArray(gradesByTeam?.[row.team]) ? gradesByTeam[row.team] : [];
     const experts = [0, 1, 2].map(expert => grades[expert]?.complete ? number(scoreExpert(grades[expert]).total) : "");
     const done = [0, 1, 2].filter(expert => grades[expert]?.complete).length;
-    const tied = score && scores.some((other, rival) => rival !== index && other && compareScores(other, score) === 0);
-    const status = !score ? "pending: " + done + " of 3 expert sheets complete" : tied ? "tied: the Chair decides" : "complete";
-    return [ranks[index] ?? "", team, MARKETS[marketForTable(room, team)].name]
-      .concat(score ? [score.written, score.oral, score.uppsala, score.total].map(number) : ["", "", "", ""], experts, [status]);
+    const status = row.key ? (row.tied ? "tied: the Chair decides" : "complete") :
+      row.jury ? "pending: import the team JSON for the game result" : "pending: " + done + " of 3 expert sheets complete";
+    const jury = row.jury ? [row.jury.written, row.jury.oral, row.jury.uppsala].map(number) : ["", "", ""];
+    const totals = counted ? [row.jury ? number(row.jury.total) : "", row.game === null ? "" : number(row.game), row.final === null ? "" : number(row.final)] :
+      [row.jury ? number(row.jury.total) : ""];
+    return [row.rank ?? "", row.team, MARKETS[marketForTable(room, row.team)].name].concat(jury, totals, experts, [status]);
   }));
   return "\ufeff" + lines.map(line => line.map(cell => csvCell(cell, separator)).join(separator)).join("\r\n") + "\r\n";
 }
@@ -2142,7 +2165,8 @@ return { esc, button, disclosure, facts, stage, saveFile, interval, countdown, t
 // src/host.mjs
 const __omf_host = (() => {
 const { CONFIG, MARKETS, BULLETINS, RUBRIC, QUESTION } = __omf_scenario;
-const { TEAMS, SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, validateRecord, scoreJury, compareScores } = __omf_rules;
+const { TEAMS, SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, validateRecord, standings, compareScores } = __omf_rules;
+const { tuning } = __omf_tuning;
 const { hostKey, getStored, putStored } = __omf_storage;
 const { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, scoresCsv } = __omf_presentation;
 const { trueNow } = __omf_clock;
@@ -2197,27 +2221,25 @@ function activeRoom() {
     </div>`;
 }
 
-function scoresFor(team) {
-  const data = host.panel.grades[team];
-  return scoreJury(data);
-}
-
 function scoresTable() {
-  const scored = TEAMS.map(team => ({team, score: scoresFor(team)}));
-  const ranked = scored.filter(item => item.score).sort((a, b) => compareScores(a.score, b.score));
-  const complete = ranked.length === TEAMS.length;
-  const tied = complete ? ranked.filter(item => compareScores(item.score, ranked[0].score) === 0) : [];
-  const heading = !complete ? "Complete all three expert sheets for every table to rank the proposals." :
-    tied.length > 1 ? "The Chair decides between tables " + tied.map(item => item.team).join(", ") + " and gives a rubric-based reason." :
+  const rows = standings(host.panel.grades, host.panel.records);
+  const counted = tuning().gameShare > 0;
+  const complete = rows.every(row => row.key);
+  const ranked = rows.filter(row => row.key).sort((a, b) => compareScores(a.key, b.key));
+  const tied = complete ? ranked.filter(row => compareScores(row.key, ranked[0].key) === 0) : [];
+  const heading = !complete ? (counted ? "Complete all three expert sheets and import the team JSON for every table to rank the proposals." :
+      "Complete all three expert sheets for every table to rank the proposals.") :
+    tied.length > 1 ? "The Chair decides between tables " + tied.map(row => row.team).join(", ") + " and gives a rubric-based reason." :
       "First launch priority · Table " + ranked[0].team + " · " + MARKETS[marketForTable(host.room, ranked[0].team)].name;
-  const rows = (complete ? ranked : scored).map(({team, score}) =>
-    "<tr><td>" + esc(MARKETS[marketForTable(host.room, team)].name) + "</td>" +
-    (score ? [score.written, score.oral, score.total].map(value => "<td>" + value.toFixed(1) + "</td>").join("") :
-      '<td colspan="3">Pending</td>') + "</tr>").join("");
+  const number = value => (value === null || value === undefined ? "Pending" : value.toFixed(1));
+  const body = (complete ? ranked : rows).map(row => "<tr><td>" + esc(MARKETS[marketForTable(host.room, row.team)].name) + "</td>" +
+    [row.jury?.written, row.jury?.oral].map(value => "<td>" + number(value) + "</td>").join("") +
+    (counted ? "<td>" + number(row.game) + "</td><td>" + number(row.final) + "</td>" : "<td>" + number(row.jury?.total) + "</td>") + "</tr>").join("");
   return `<div class="pv-panel">
     <h3>Board ranking</h3><p>${esc(heading)}</p>
-    <table class="pv-scores"><thead><tr><th scope="col">Market</th><th scope="col">Written</th><th scope="col">Oral</th><th scope="col">Total</th></tr></thead>
-    <tbody>${rows}</tbody></table>
+    ${counted ? '<p class="pv-inline-note">Final = ' + Math.round((1 - tuning().gameShare) * 100) + "% experts + " + Math.round(tuning().gameShare * 100) + "% game result. The game result comes from the imported team JSON.</p>" : ""}
+    <table class="pv-scores"><thead><tr><th scope="col">Market</th><th scope="col">Written</th><th scope="col">Oral</th>${counted ? '<th scope="col">Game</th><th scope="col">Final</th>' : '<th scope="col">Total</th>'}</tr></thead>
+    <tbody>${body}</tbody></table>
     <div class="pv-actions pv-file-actions">${button("Export scores CSV", "host-scores")}${button("CSV for Russian Excel (;)", "host-scores-ru")}</div></div>`;
 }
 
@@ -2302,7 +2324,7 @@ function hostClock(root, now) {
 
 function exportScores(russianExcel = false) {
   saveFile("revolut-" + host.room.toLowerCase() + "-scores" + (russianExcel ? "-excel-ru" : "") + ".csv",
-    scoresCsv(host.room, host.panel.grades, {russianExcel}), "text/csv;charset=utf-8");
+    scoresCsv(host.room, host.panel.grades, {russianExcel, records: host.panel.records}), "text/csv;charset=utf-8");
 }
 
 async function handleHostAction(id, target, ui) {
@@ -2379,7 +2401,7 @@ return { renderHost, hostClock, handleHostAction, updateHostField, importTeamFil
 // src/app.mjs
 await (async () => {
 const { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION } = __omf_scenario;
-const { TEAMS, SCHEDULE, OUTCOMES, makeRoom, marketForTable, roomStart, phaseAt, replay, optionsFor, pendingFact, settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord, contentMismatch } = __omf_rules;
+const { TEAMS, SCHEDULE, OUTCOMES, makeRoom, marketForTable, roomStart, phaseAt, replay, optionsFor, pendingFact, settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord, contentMismatch, gameScore } = __omf_rules;
 const { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot, activeTeam, newId, newRecord, withSaveLock, knownTable, SaveError, recoveryOptions, requestPersistence, persistenceState, readBackup, markBackup, backupBehind } = __omf_storage;
 const { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename } = __omf_presentation;
 const { renderHost, handleHostAction, updateHostField, importTeamFile, hostClock } = __omf_host;
@@ -2639,6 +2661,7 @@ function resultScreen(phase, state, path, record) {
   const editing = phase.id === "PREP";
   return stage("Board Brief", record.mode === "practice" ? "Practice outcome" : "Investment hearing", `
     <div class="pv-record pv-checkpoint"><p class="pv-mono">Your recommendation</p><h3>${esc(outcome[0])}</h3><p>${esc(outcome[1])}</p></div>
+    ${phase.id === "END" && record.mode === "live" ? '<div class="pv-record"><p class="pv-mono">Game result</p><h3>' + Math.round(gameScore(record).total) + " / 100</h3><p>This result counts towards your final grade together with the expert score. The Chair announces the final decision.</p></div>" : ""}
     <div class="pv-task"><strong>At the hearing</strong>Three minutes to pitch and one minute for the common question. Show the first customer, two CAGE findings, the Uppsala pathway, what the budget changed and how you handled the emergency.</div>
     <p><strong>Common question</strong> · ${esc(QUESTION)}</p>
     <label class="pv-field pv-block-gap">One-page Board Brief

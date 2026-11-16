@@ -1,5 +1,6 @@
 import { MARKETS, ROUNDS, WORKSHEET, CONFIG, QUESTION } from './scenario.mjs';
-import { OUTCOMES, TEAMS, replay, roomStart, marketForTable, scoreJury, scoreExpert, rankScores, compareScores } from './rules.mjs';
+import { OUTCOMES, TEAMS, replay, roomStart, marketForTable, scoreExpert, standings } from './rules.mjs';
+import { tuning } from './tuning.mjs';
 
 export function esc(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
@@ -96,23 +97,25 @@ export function csvCell(value, separator = ",") {
   return quote ? '"' + text.replaceAll('"', '""') + '"' : text;
 }
 
-// The score table as CSV. `russianExcel` writes ";" separators and decimal commas, which is what
-// Excel with Russian regional settings expects. A BOM makes Excel read the file as UTF-8.
-export function scoresCsv(room, gradesByTeam, {russianExcel = false} = {}) {
+// The score table as CSV. `records` are the imported team JSON files: the game result comes from them.
+// `russianExcel` writes ";" separators and decimal commas, which is what Excel with Russian regional
+// settings expects. A BOM makes Excel read the file as UTF-8.
+export function scoresCsv(room, gradesByTeam, {russianExcel = false, records = {}} = {}) {
   const separator = russianExcel ? ";" : ",";
   const number = value => (russianExcel ? value.toFixed(1).replace(".", ",") : value.toFixed(1));
-  const scores = TEAMS.map(team => scoreJury(gradesByTeam[team]));
-  const ranks = rankScores(scores);
-  const header = ["rank", "table", "market", "written_70", "oral_30", "uppsala_16", "total_100", "expert1_total", "expert2_total", "expert3_total", "status"];
-  const lines = [header].concat(TEAMS.map((team, index) => {
-    const grades = Array.isArray(gradesByTeam[team]) ? gradesByTeam[team] : [];
-    const score = scores[index];
+  const counted = tuning().gameShare > 0;
+  const header = ["rank", "table", "market", "written_70", "oral_30", "uppsala_16"]
+    .concat(counted ? ["expert_total_100", "game_100", "final_100"] : ["total_100"], ["expert1_total", "expert2_total", "expert3_total", "status"]);
+  const lines = [header].concat(standings(gradesByTeam, records).map(row => {
+    const grades = Array.isArray(gradesByTeam?.[row.team]) ? gradesByTeam[row.team] : [];
     const experts = [0, 1, 2].map(expert => grades[expert]?.complete ? number(scoreExpert(grades[expert]).total) : "");
     const done = [0, 1, 2].filter(expert => grades[expert]?.complete).length;
-    const tied = score && scores.some((other, rival) => rival !== index && other && compareScores(other, score) === 0);
-    const status = !score ? "pending: " + done + " of 3 expert sheets complete" : tied ? "tied: the Chair decides" : "complete";
-    return [ranks[index] ?? "", team, MARKETS[marketForTable(room, team)].name]
-      .concat(score ? [score.written, score.oral, score.uppsala, score.total].map(number) : ["", "", "", ""], experts, [status]);
+    const status = row.key ? (row.tied ? "tied: the Chair decides" : "complete") :
+      row.jury ? "pending: import the team JSON for the game result" : "pending: " + done + " of 3 expert sheets complete";
+    const jury = row.jury ? [row.jury.written, row.jury.oral, row.jury.uppsala].map(number) : ["", "", ""];
+    const totals = counted ? [row.jury ? number(row.jury.total) : "", row.game === null ? "" : number(row.game), row.final === null ? "" : number(row.final)] :
+      [row.jury ? number(row.jury.total) : ""];
+    return [row.rank ?? "", row.team, MARKETS[marketForTable(room, row.team)].name].concat(jury, totals, experts, [status]);
   }));
   return "\ufeff" + lines.map(line => line.map(cell => csvCell(cell, separator)).join(separator)).join("\r\n") + "\r\n";
 }

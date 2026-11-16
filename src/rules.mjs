@@ -41,7 +41,9 @@ export const OUTCOMES = {
 // Fingerprint of everything a team reads or is charged for. Saves remember it, so a page that was
 // republished with different content can warn instead of silently showing other results.
 // Changes to the rule logic itself are covered by CONFIG.version.
-export const CONTENT_ID = hash32(JSON.stringify([MARKETS, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, BRIEF, SINGAPORE, PRICE, SCHEDULE, OUTCOMES, CONFIG.budget]));
+const tuned = tuning();
+export const CONTENT_ID = hash32(JSON.stringify([MARKETS, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, BRIEF, SINGAPORE, PRICE, SCHEDULE, OUTCOMES, CONFIG.budget,
+  tuned.name, tuned.gameShare, tuned.askPilotTwo, tuned.scoring, tuned.markets, tuned.randomness.retestSpread]));
 
 export function contentMismatch(record) {
   return !!record?.content && record.content !== CONTENT_ID;
@@ -145,7 +147,7 @@ export function optionsFor(id, state, marketId) {
         option("hold", 0, "Hold outreach", "Publish a holding statement and document the incident. The next ask can fund preparation and a later review."),
         option("targeted", state.verified ? 0 : price(marketId, "targeted"), "Correct one channel", "Correct one channel and pause all uncorrected messages. Keep one cohort. Readiness verification or the narrow mock test lets you validate the correction in that cohort."),
         option("full", (state.cohorts === 2 ? price(marketId, "fullTwo") : price(marketId, "fullOne")) - Number(state.verified),
-          "Correct every channel and retest", "Correct all planned channels and run a mock comprehension check with 20 people per cohort. Each cohort needs at least 16 correct responses. A prior prototype, preparation of approved wording or a narrowed test can improve the result.")
+          "Correct every channel and retest", "Correct all planned channels and run a mock comprehension check with 20 people per cohort. Each cohort needs at least 16 correct responses. A prior prototype, preparation of approved wording or a narrowed test can improve the result. Real tests vary: a result can land one answer above or below the expectation.")
       ];
       break;
     case "R7": {
@@ -219,7 +221,9 @@ function responseResult(state, selection, profile, marketId, record) {
   }
   const advantage = state.narrow ? 2 : Number(state.verified || state.research === "prototype");
   const shift = tuning().markets[marketId]?.testShift ?? 0;
-  const draw = cohort => retestDelta([record.room, record.team, "R6", cohort].join("|"));
+  // A live room fixes the draw (room, table, round). A practice table uses its own session, so rehearsals differ.
+  const seed = record.mode === "practice" ? "practice-" + record.session : record.room;
+  const draw = cohort => retestDelta([seed, record.team, "R6", cohort].join("|"));
   const clamp = value => Math.min(20, Math.max(0, value));
   const firstBase = state.narrow ? 18 : state.cohorts === 2 ? 16 + advantage : 15 + advantage;
   const firstResult = clamp(firstBase + shift + draw(1));
@@ -485,6 +489,22 @@ export function gameScore(record) {
 // The final grade: expert score (0-100) and game score (0-100) in the configured proportion.
 export function finalScore(jury, game, share = tuning().gameShare) {
   return jury * (1 - share) + game * share;
+}
+
+// Table by table: the expert score, the game result (from the imported team JSON) and the final grade.
+// The final grade needs the game result only while the game counts towards the grade.
+export function standings(grades, records = {}) {
+  const share = tuning().gameShare;
+  const rows = TEAMS.map(team => {
+    const jury = scoreJury(grades?.[team]);
+    const game = share > 0 && records?.[team] ? (gameScore(records[team])?.total ?? null) : null;
+    const ready = !!jury && (share === 0 || game !== null);
+    const final = ready ? finalScore(jury.total, game ?? 0, share) : null;
+    return {team, jury, game, final, key: ready ? {total: final, oral: jury.oral, uppsala: jury.uppsala} : null};
+  });
+  const ranks = rankScores(rows.map(row => row.key));
+  return rows.map((row, index) => ({...row, rank: ranks[index],
+    tied: !!row.key && rows.some((other, rival) => rival !== index && other.key && compareScores(other.key, row.key) === 0)}));
 }
 
 // Competition ranking: equal scores share a rank. Entries without a score have no rank.

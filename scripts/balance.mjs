@@ -1,13 +1,13 @@
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CONFIG, MARKETS, ROUNDS } from '../src/scenario.mjs';
 import { optionsFor, replay, gameScore, price, PRICE } from '../src/rules.mjs';
-import { LEGACY, PROPOSAL, useTuning } from '../src/tuning.mjs';
+import { LEGACY, V3, useTuning } from '../src/tuning.mjs';
 
 // Balance report for a tuning set. The game is a decision tree with one point of chance (the full retest),
 // so every choice is valued as a team would value it: the best option at each decision, the average over
 // chance. An option is "viable" at a node when its value is within `gap` points of the best option there.
 //
-//   node scripts/balance.mjs            evaluate the PROPOSAL
+//   node scripts/balance.mjs            evaluate the approved settings (V3)
 //   node scripts/balance.mjs legacy     evaluate the game as played so far
 
 const PRACTICE = {game: CONFIG.game, version: CONFIG.version, mode: "practice", team: 1, room: "PRACTICE", session: "balance", drafts: {}, notes: {}, brief: "", bulletinB: false};
@@ -139,6 +139,6 @@ export function render(result, config) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const config = process.argv[2] === "legacy" ? LEGACY : PROPOSAL;
+  const config = process.argv[2] === "legacy" ? LEGACY : V3;
   process.stdout.write(render(analyze(config), config));
 }

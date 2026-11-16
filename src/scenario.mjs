@@ -1,6 +1,6 @@
 export const CONFIG = {
   game: "revolut-one-market-first",
-  version: "v2",
+  version: "v3",
   budget: 9,
   maxNote: 1800,
   maxImportBytes: 512 * 1024

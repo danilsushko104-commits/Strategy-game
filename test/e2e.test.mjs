@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { CONFIG } from '../src/scenario.mjs';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -77,15 +78,17 @@ test("A live table mirrors its save into IndexedDB and tracks the downloaded bac
     assert.match(await page.locator(".pv-checkpoint .pv-backup").innerText(), /No backup file yet/);
     assert.equal(await page.locator(".pv-checkpoint .pv-backup").getAttribute("data-backup-state"), "warn");
 
-    const mirrored = await page.evaluate(() => new Promise((resolve, reject) => {
-      const open = indexedDB.open("revolut-one-market-first:v2", 1);
+    const mirrored = await page.evaluate(name => new Promise((resolve, reject) => {
+      const open = indexedDB.open(name, 1);
       open.onerror = () => reject(open.error);
       open.onsuccess = () => {
-        const get = open.result.transaction("kv").objectStore("kv").getAll();
-        get.onsuccess = () => resolve(get.result.map(value => JSON.parse(value).history.length));
-        get.onerror = () => reject(get.error);
+        try {
+          const get = open.result.transaction("kv").objectStore("kv").getAll();
+          get.onsuccess = () => resolve(get.result.map(value => JSON.parse(value).history.length));
+          get.onerror = () => reject(get.error);
+        } catch (error) { reject(error); }
       };
-    }));
+    }), CONFIG.game + ":" + CONFIG.version);
     assert.ok(mirrored.includes(1), "the IndexedDB copy holds the locked decision: " + mirrored);
 
     const [download] = await Promise.all([page.waitForEvent("download"), page.click('.pv-checkpoint button:has-text("Download backup JSON")')]);
@@ -152,4 +155,34 @@ test("Locked decisions reach the sheet, survive an outage and are sent again on 
     assert.equal(received[0].evidence, "evidence");
     assert.match(received[0].id, new RegExp("^" + room + ":1:0:"));
   }, pageWithSheet(), [/net::ERR_FAILED/]); // the outage is simulated by aborting the request
+});
+
+test("After the session the team sees its game result, and the facilitator panel shows it from the imported file", {skip}, async () => {
+  await withPage(async page => {
+    // R1 started 200 minutes ago: the whole seminar is over, so every round was settled with its default.
+    const moscow = new Date(Date.now() - 200 * 60_000 + 3 * 3_600_000).toISOString().slice(0, 16);
+    await page.click("button[data-action=host]");
+    await page.fill('[data-host="start"]', moscow);
+    await page.click('button:has-text("Create a new room")');
+    const room = await page.locator(".pv-record h3").first().innerText();
+    await page.click("button[data-action=home]");
+    await page.fill('input[data-entry="room"]', room);
+    await page.click('button:has-text("Open team dashboard")');
+    await page.locator(".pv-record", {hasText: "Game result"}).waitFor();
+    assert.match(await page.locator(".pv-record", {hasText: "Game result"}).innerText(), /10 \/ 100/);
+
+    const [download] = await Promise.all([page.waitForEvent("download"), page.click('button:has-text("Download team JSON")')]);
+    const file = join(mkdtempSync(join(tmpdir(), "omf-team-")), "team.json");
+    await download.saveAs(file);
+
+    await page.click("button[data-action=home]");
+    await page.click("button[data-action=host]");
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click('button:has-text("Import team JSON")')]);
+    await chooser.setFiles(file);
+    const table = page.locator(".pv-scores");
+    await table.waitFor();
+    assert.match(await table.innerText(), /Game/);
+    assert.match(await table.locator("tbody").innerText(), /10\.0/);
+    assert.match(await page.locator(".pv-panel", {hasText: "Board ranking"}).innerText(), /20% game result/);
+  });
 });

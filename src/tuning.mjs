@@ -34,10 +34,10 @@ export const LEGACY = {
 // Credit deltas apply on top of the base prices in rules.mjs (PRICE). `testShift` moves the number of
 // correct answers in a full retest. The reasons are hypotheses drawn from the market facts in scenario.mjs
 // and must be confirmed by the author or a fintech specialist.
-export const PROPOSAL = {
+export const V3 = {
   ...LEGACY,
-  name: "proposal",
-  gameShare: 0.1,
+  name: "v3",
+  gameShare: 0.2,
   askPilotTwo: true,
   markets: {
     indonesia: {price: {alliance: -1, broaden: 1}, testShift: 0, note: "Partners can open distribution cheaply, but each extra channel across an archipelago needs more support."},
@@ -48,7 +48,7 @@ export const PROPOSAL = {
   randomness: {retestSpread: 0.2, draw: null}
 };
 
-let active = LEGACY;
+let active = V3;
 
 export function tuning() {
   return active;

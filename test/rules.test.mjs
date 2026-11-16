@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG, MARKETS, ROUNDS, RUBRIC } from '../src/scenario.mjs';
+import { LEGACY, useTuning } from '../src/tuning.mjs';
 import { SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, optionsFor, replay, settleDeadlines,
   updateDraft, updateNote, updateBrief, lockRound, validateRecord, scoreJury, compareScores } from '../src/rules.mjs';
+
+// These tests pin the rule mechanics with equal prices and no chance (the game before v3).
+// The approved v3 settings are tested in balance.test.mjs.
+useTuning(LEGACY);
 
 const start = Date.parse("2026-11-14T18:30:00+03:00");
 const minute = delta => start + delta * 60_000;

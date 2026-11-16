@@ -1,5 +1,6 @@
 import { CONFIG, MARKETS, BULLETINS, RUBRIC, QUESTION } from './scenario.mjs';
-import { TEAMS, SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, validateRecord, scoreJury, compareScores } from './rules.mjs';
+import { TEAMS, SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, validateRecord, standings, compareScores } from './rules.mjs';
+import { tuning } from './tuning.mjs';
 import { hostKey, getStored, putStored } from './storage.mjs';
 import { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, scoresCsv } from './presentation.mjs';
 import { trueNow } from './clock.mjs';
@@ -55,27 +56,25 @@ function activeRoom() {
     </div>`;
 }
 
-function scoresFor(team) {
-  const data = host.panel.grades[team];
-  return scoreJury(data);
-}
-
 function scoresTable() {
-  const scored = TEAMS.map(team => ({team, score: scoresFor(team)}));
-  const ranked = scored.filter(item => item.score).sort((a, b) => compareScores(a.score, b.score));
-  const complete = ranked.length === TEAMS.length;
-  const tied = complete ? ranked.filter(item => compareScores(item.score, ranked[0].score) === 0) : [];
-  const heading = !complete ? "Complete all three expert sheets for every table to rank the proposals." :
-    tied.length > 1 ? "The Chair decides between tables " + tied.map(item => item.team).join(", ") + " and gives a rubric-based reason." :
+  const rows = standings(host.panel.grades, host.panel.records);
+  const counted = tuning().gameShare > 0;
+  const complete = rows.every(row => row.key);
+  const ranked = rows.filter(row => row.key).sort((a, b) => compareScores(a.key, b.key));
+  const tied = complete ? ranked.filter(row => compareScores(row.key, ranked[0].key) === 0) : [];
+  const heading = !complete ? (counted ? "Complete all three expert sheets and import the team JSON for every table to rank the proposals." :
+      "Complete all three expert sheets for every table to rank the proposals.") :
+    tied.length > 1 ? "The Chair decides between tables " + tied.map(row => row.team).join(", ") + " and gives a rubric-based reason." :
       "First launch priority · Table " + ranked[0].team + " · " + MARKETS[marketForTable(host.room, ranked[0].team)].name;
-  const rows = (complete ? ranked : scored).map(({team, score}) =>
-    "<tr><td>" + esc(MARKETS[marketForTable(host.room, team)].name) + "</td>" +
-    (score ? [score.written, score.oral, score.total].map(value => "<td>" + value.toFixed(1) + "</td>").join("") :
-      '<td colspan="3">Pending</td>') + "</tr>").join("");
+  const number = value => (value === null || value === undefined ? "Pending" : value.toFixed(1));
+  const body = (complete ? ranked : rows).map(row => "<tr><td>" + esc(MARKETS[marketForTable(host.room, row.team)].name) + "</td>" +
+    [row.jury?.written, row.jury?.oral].map(value => "<td>" + number(value) + "</td>").join("") +
+    (counted ? "<td>" + number(row.game) + "</td><td>" + number(row.final) + "</td>" : "<td>" + number(row.jury?.total) + "</td>") + "</tr>").join("");
   return `<div class="pv-panel">
     <h3>Board ranking</h3><p>${esc(heading)}</p>
-    <table class="pv-scores"><thead><tr><th scope="col">Market</th><th scope="col">Written</th><th scope="col">Oral</th><th scope="col">Total</th></tr></thead>
-    <tbody>${rows}</tbody></table>
+    ${counted ? '<p class="pv-inline-note">Final = ' + Math.round((1 - tuning().gameShare) * 100) + "% experts + " + Math.round(tuning().gameShare * 100) + "% game result. The game result comes from the imported team JSON.</p>" : ""}
+    <table class="pv-scores"><thead><tr><th scope="col">Market</th><th scope="col">Written</th><th scope="col">Oral</th>${counted ? '<th scope="col">Game</th><th scope="col">Final</th>' : '<th scope="col">Total</th>'}</tr></thead>
+    <tbody>${body}</tbody></table>
     <div class="pv-actions pv-file-actions">${button("Export scores CSV", "host-scores")}${button("CSV for Russian Excel (;)", "host-scores-ru")}</div></div>`;
 }
 
@@ -160,7 +159,7 @@ export function hostClock(root, now) {
 
 function exportScores(russianExcel = false) {
   saveFile("revolut-" + host.room.toLowerCase() + "-scores" + (russianExcel ? "-excel-ru" : "") + ".csv",
-    scoresCsv(host.room, host.panel.grades, {russianExcel}), "text/csv;charset=utf-8");
+    scoresCsv(host.room, host.panel.grades, {russianExcel, records: host.panel.records}), "text/csv;charset=utf-8");
 }
 
 export async function handleHostAction(id, target, ui) {

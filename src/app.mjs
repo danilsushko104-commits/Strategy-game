@@ -1,6 +1,6 @@
 import { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION } from './scenario.mjs';
 import { TEAMS, SCHEDULE, OUTCOMES, makeRoom, marketForTable, roomStart, phaseAt, replay, optionsFor, pendingFact,
-  settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord, contentMismatch } from './rules.mjs';
+  settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord, contentMismatch, gameScore } from './rules.mjs';
 import { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot, activeTeam, newId, newRecord, withSaveLock,
   knownTable, SaveError, recoveryOptions, requestPersistence, persistenceState, readBackup, markBackup, backupBehind } from './storage.mjs';
 import { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename } from './presentation.mjs';
@@ -233,6 +233,7 @@ function resultScreen(phase, state, path, record) {
   const editing = phase.id === "PREP";
   return stage("Board Brief", record.mode === "practice" ? "Practice outcome" : "Investment hearing", `
     <div class="pv-record pv-checkpoint"><p class="pv-mono">Your recommendation</p><h3>${esc(outcome[0])}</h3><p>${esc(outcome[1])}</p></div>
+    ${phase.id === "END" && record.mode === "live" ? '<div class="pv-record"><p class="pv-mono">Game result</p><h3>' + Math.round(gameScore(record).total) + " / 100</h3><p>This result counts towards your final grade together with the expert score. The Chair announces the final decision.</p></div>" : ""}
     <div class="pv-task"><strong>At the hearing</strong>Three minutes to pitch and one minute for the common question. Show the first customer, two CAGE findings, the Uppsala pathway, what the budget changed and how you handled the emergency.</div>
     <p><strong>Common question</strong> · ${esc(QUESTION)}</p>
     <label class="pv-field pv-block-gap">One-page Board Brief
