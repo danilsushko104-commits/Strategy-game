@@ -1,4 +1,4 @@
-import { CONFIG, MARKETS, ROUNDS, WORKSHEET, RUBRIC, BRIEF, BULLETINS, SINGAPORE } from './scenario.mjs';
+import { CONFIG, MARKETS, ROUNDS, WORKSHEET, RUBRIC, BRIEF, BULLETINS, SINGAPORE, PROBLEMS } from './scenario.mjs';
 import { hash32 } from './hash.mjs';
 import { tuning, retestDelta } from './tuning.mjs';
 
@@ -29,6 +29,11 @@ export function price(marketId, key) {
   return Math.max(0, PRICE[key] + (tuning().markets[marketId]?.price?.[key] ?? 0));
 }
 
+// The problem a profile's emergency note is about (the first one when it is about two).
+export function problemFor(marketId, profileKey) {
+  return MARKETS[marketId].profiles[profileKey].problems[0];
+}
+
 const ROUTES = { pilot: "Pilot with local provider", alliance: "Contractual alliance", acquisition: "Prepare an acquisition", planning: "Preparation without a selected route" };
 export const OUTCOMES = {
   pilot2: ["Conditional pilot with two cohorts", "Request approval for two cohorts subject to confirmed permissions, provider readiness for each channel and the named launch condition. Name what you would do if one cohort misses its threshold."],
@@ -42,7 +47,7 @@ export const OUTCOMES = {
 // republished with different content can warn instead of silently showing other results.
 // Changes to the rule logic itself are covered by CONFIG.version.
 const tuned = tuning();
-export const CONTENT_ID = hash32(JSON.stringify([MARKETS, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, BRIEF, SINGAPORE, PRICE, SCHEDULE, OUTCOMES, CONFIG.budget,
+export const CONTENT_ID = hash32(JSON.stringify([MARKETS, ROUNDS, PROBLEMS, BULLETINS, WORKSHEET, RUBRIC, BRIEF, SINGAPORE, PRICE, SCHEDULE, OUTCOMES, CONFIG.budget,
   tuned.name, tuned.gameShare, tuned.askPilotTwo, tuned.scoring, tuned.markets, tuned.randomness.retestSpread]));
 
 export function contentMismatch(record) {
@@ -145,7 +150,7 @@ export function optionsFor(id, state, marketId) {
     case "R6":
       options = [
         option("hold", 0, "Hold outreach", "Publish a holding statement and document the incident. The next ask can fund preparation and a later review."),
-        option("targeted", state.verified ? 0 : price(marketId, "targeted"), "Correct one channel", "Correct one channel and pause all uncorrected messages. Keep one cohort. Readiness verification or the narrow mock test lets you validate the correction in that cohort."),
+        option("targeted", state.verified ? 0 : price(marketId, "targeted"), "Correct one channel", "Pick the problem you are correcting and pause all uncorrected messages. Keep one cohort. If you name what your customers actually misunderstood, readiness verification or the narrow mock test lets you validate the correction in that cohort."),
         option("full", (state.cohorts === 2 ? price(marketId, "fullTwo") : price(marketId, "fullOne")) - Number(state.verified),
           "Correct every channel and retest", "Correct all planned channels and run a mock comprehension check with 20 people per cohort. Each cohort needs at least 16 correct responses. A prior prototype, preparation of approved wording or a narrowed test can improve the result. Real tests vary: a result can land one answer above or below the expectation.")
       ];
@@ -203,13 +208,22 @@ export function pendingFact(round, state, marketId) {
   }[round];
 }
 
-function responseResult(state, selection, profile, marketId, record) {
+function responseResult(state, selection, profile, marketId, record, problem) {
   if (selection === "hold") return {
     incident: "hold", launchEvidence: false, cohorts: state.cohorts,
     result: "Outreach stopped. Preserve the evidence and propose a review date."
   };
   if (selection === "targeted") {
     const loss = state.cohorts === 2 ? "The second cohort is removed. " : "";
+    const label = PROBLEMS.find(item => item.id === problem)?.label.split(":")[0].toLowerCase() ?? "that";
+    if (!profile.problems.includes(problem)) {
+      // Naming another problem corrects something the customers were not confused about.
+      return {
+        cohorts: 1, incident: "targeted", launchEvidence: false,
+        result: loss + "The correction addresses " + label + ", but your customers were confused about something else, so it does not reach them. " +
+          "No comprehension result is available. A new test is needed before a pilot ask."
+      };
+    }
     const proven = state.verified || state.narrow;
     const reason = state.verified ? "The prior wording review supports a scoped follow-up." :
       state.narrow ? "The earlier narrow prototype supports a scoped follow-up." : "";
@@ -237,7 +251,7 @@ function responseResult(state, selection, profile, marketId, record) {
   };
 }
 
-function applyChoice(state, round, selection, marketId, record) {
+function applyChoice(state, round, selection, marketId, record, event) {
   const market = MARKETS[marketId];
   const profile = market.profiles[state.profile];
   const next = {...state, credits: state.credits - selection.cost, result: null};
@@ -267,7 +281,7 @@ function applyChoice(state, round, selection, marketId, record) {
         broaden: "Two cohorts and two channels. A targeted correction retains one cohort. A full retest can keep both.", diligence: market.diligence}[selection.id];
       break;
     case "R6":
-      Object.assign(next, responseResult(state, selection.id, profile, marketId, record));
+      Object.assign(next, responseResult(state, selection.id, profile, marketId, record, event?.problem));
       break;
     case "R7":
       next.result = OUTCOMES[selection.id][1];
@@ -276,8 +290,10 @@ function applyChoice(state, round, selection, marketId, record) {
   return next;
 }
 
-export function isDraftComplete(draft) {
-  return !!draft?.choice && !!draft.evidence?.trim() && !!draft.tradeoff?.trim();
+// A decision needs a choice, evidence and a trade-off; correcting one channel in R6 also needs the problem.
+export function isDraftComplete(draft, roundId) {
+  const basic = !!draft?.choice && !!draft.evidence?.trim() && !!draft.tradeoff?.trim();
+  return basic && (roundId !== "R6" || draft.choice !== "targeted" || PROBLEMS.some(item => item.id === draft.problem));
 }
 
 function resolveChoice(event, round, state, marketId) {
@@ -286,7 +302,7 @@ function resolveChoice(event, round, state, marketId) {
     if (event.choice !== fallback.id) throw new Error("Unexpected default in " + round.id + ".");
     return fallback;
   }
-  if (!["submitted", "deadline"].includes(event.method) || !isDraftComplete(event)) {
+  if (!["submitted", "deadline"].includes(event.method) || !isDraftComplete(event, round.id)) {
     throw new Error("Incomplete decision in " + round.id + ".");
   }
   const chosen = optionsFor(round.id, state, marketId).find(item => item.id === event.choice);
@@ -300,7 +316,7 @@ export function replay(record) {
     const round = ROUNDS[index];
     if (!round || event.round !== round.id) throw new Error("Decisions are out of order.");
     const chosen = resolveChoice(event, round, state, record.market);
-    state = applyChoice(state, round, chosen, record.market, record);
+    state = applyChoice(state, round, chosen, record.market, record, event);
     return {...event, label: chosen.label, cost: chosen.cost, credits: state.credits, result: state.result, state};
   });
   return {state, path};
@@ -309,7 +325,8 @@ export function replay(record) {
 function newDecision(record, progress, round, method, now) {
   const draft = record.drafts[round.id] || {};
   const choice = method === "default" ? fallbackFor(round, progress, record.market).id : draft.choice;
-  const event = {round: round.id, method, choice, at: new Date(now).toISOString(), evidence: draft.evidence || "", tradeoff: draft.tradeoff || ""};
+  const event = {round: round.id, method, choice, at: new Date(now).toISOString(), evidence: draft.evidence || "", tradeoff: draft.tradeoff || "",
+    ...(round.id === "R6" && choice === "targeted" ? {problem: draft.problem} : {})};
   if (method !== "default") resolveChoice(event, round, progress, record.market);
   return {...record, history: [...record.history, event]};
 }
@@ -321,7 +338,7 @@ export function settleDeadlines(record, now) {
     if (now < deadline) break;
     const {state} = replay(record);
     const draft = record.drafts[round.id];
-    const valid = isDraftComplete(draft) && optionsFor(round.id, state, record.market).some(item => item.id === draft.choice && !item.blocked);
+    const valid = isDraftComplete(draft, round.id) && optionsFor(round.id, state, record.market).some(item => item.id === draft.choice && !item.blocked);
     record = newDecision(record, state, round, valid ? "deadline" : "default", deadline);
   }
   return record;
@@ -360,6 +377,8 @@ export function updateDraft(record, roundId, field, value, now) {
     if (roundId === "R6" && !canReadBulletinB(record, now)) throw new Error("Wait for bulletin B.");
     const selected = optionsFor(roundId, replay(record).state, record.market).find(item => item.id === value && !item.blocked);
     if (!selected) throw new Error("This choice is unavailable.");
+  } else if (field === "problem") {
+    if (roundId !== "R6" || !PROBLEMS.some(item => item.id === value)) throw new Error("Choose one of the listed problems.");
   } else if (field !== "evidence" && field !== "tradeoff") throw new Error("Unknown draft field.");
   const draft = {...record.drafts[roundId], [field]: value.slice(0, CONFIG.maxNote)};
   return {...record, drafts: {...record.drafts, [roundId]: draft}};
@@ -417,13 +436,15 @@ export function validateRecord(record) {
       if (!timely) throw new Error("Decision timestamp does not match the room schedule.");
     }
     return {round: event.round, choice: event.choice, method: event.method, at: new Date(at).toISOString(),
-      evidence: cleanText(event.evidence), tradeoff: cleanText(event.tradeoff)};
+      evidence: cleanText(event.evidence), tradeoff: cleanText(event.tradeoff),
+      ...(typeof event.problem === "string" && event.problem ? {problem: event.problem.slice(0, 24)} : {})};
   });
   replay(clean);
   for (const {id} of ROUNDS) {
     const draft = record.drafts?.[id];
     if (!draft || typeof draft !== "object") continue;
-    clean.drafts[id] = {choice: cleanText(draft.choice), evidence: cleanText(draft.evidence), tradeoff: cleanText(draft.tradeoff)};
+    clean.drafts[id] = {choice: cleanText(draft.choice), evidence: cleanText(draft.evidence), tradeoff: cleanText(draft.tradeoff),
+      ...(typeof draft.problem === "string" && draft.problem ? {problem: draft.problem.slice(0, 24)} : {})};
   }
   return clean;
 }

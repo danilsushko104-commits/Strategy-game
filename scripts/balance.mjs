@@ -1,6 +1,6 @@
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CONFIG, MARKETS, ROUNDS } from '../src/scenario.mjs';
-import { optionsFor, replay, gameScore, price, PRICE } from '../src/rules.mjs';
+import { optionsFor, replay, gameScore, price, PRICE, problemFor } from '../src/rules.mjs';
 import { LEGACY, V3, useTuning } from '../src/tuning.mjs';
 
 // Balance report for a tuning set. The game is a decision tree with one point of chance (the full retest),
@@ -27,8 +27,10 @@ export function analyze(config, {gap = 5} = {}) {
       const routeBest = {};    // route -> {value, line}
       const bonus = {};
 
+      // Correcting one channel names a problem; the analysis assumes the team names the one its customers are confused about.
       const advance = (record, choice) => ({...record, history: [...record.history,
-        {round: ROUNDS[record.history.length].id, choice, method: "submitted", at: "2026-01-01T00:00:00.000Z", evidence: "e", tradeoff: "t"}]});
+        {round: ROUNDS[record.history.length].id, choice, method: "submitted", at: "2026-01-01T00:00:00.000Z", evidence: "e", tradeoff: "t",
+          ...(record.history.length === 5 && choice === "targeted" ? {problem: problemFor(marketId, record.history[0].choice)} : {})}]});
 
       function value(record, line) {
         if (record.history.length === ROUNDS.length) {

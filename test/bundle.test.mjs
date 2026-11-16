@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { build, inlineModules, MODULES, ENGINE_MODULES, INTERFACE_MODULES, OUTPUT_HTML, OUTPUT_BLOCKS } from '../scripts/build.mjs';
+import { build, inlineModules, MODULES, BLOCK_MODULES, OUTPUT_HTML, OUTPUT_BLOCKS } from '../scripts/build.mjs';
 
 const file = path => fileURLToPath(new URL("../" + path, import.meta.url));
 const scriptOf = fragment => fragment.slice(fragment.indexOf("<script>") + 8, fragment.lastIndexOf("</script>"));
@@ -17,20 +17,21 @@ test("The committed Tilda blocks and the HTML page are exactly what the build pr
   }
 });
 
-test("The modules are split into an engine and an interface block, in dependency order", () => {
-  assert.deepEqual([...ENGINE_MODULES, ...INTERFACE_MODULES], MODULES);
-  assert.equal(INTERFACE_MODULES.at(-1), "app");
+test("The modules are split over three blocks in dependency order, with the app last", () => {
+  assert.deepEqual(Object.keys(BLOCK_MODULES), ["css", "engine", "interface"]);
+  assert.deepEqual(Object.values(BLOCK_MODULES).flat(), MODULES);
+  assert.equal(BLOCK_MODULES.interface.at(-1), "app");
 });
 
 test("Every Tilda block stays small enough to paste, and the scripts compile with no module syntax left", async () => {
   const {blocks} = await build();
   for (const [key, text] of Object.entries(blocks)) {
     assert.ok(Buffer.byteLength(text) < 80 * 1024, key + " block is " + Math.round(Buffer.byteLength(text) / 1024) + " KB");
-    if (key === "css") { assert.doesNotMatch(text, /<script/); continue; }
     const code = text.slice(text.indexOf("<script>") + 8, text.lastIndexOf("</script>"));
     assert.doesNotThrow(() => new vm.Script(code), key + " must compile");
     assert.doesNotMatch(code, /^\s*(import\s*\{|export\s+(const|function|async|let|class|default|\{))/m);
   }
+  assert.doesNotMatch(blocks.css.slice(blocks.css.indexOf("</style>")), /<link|@import/);
 });
 
 function fakeSources(overrides = {}) {
@@ -98,7 +99,7 @@ test("The generated page runs a full practice game in a browser without console 
   }
 });
 
-test("Pasting the interface block without the engine block explains what is missing", {skip: !chromium && "Playwright is not installed"}, async () => {
+test("Pasting a block without the one before it explains what is missing", {skip: !chromium && "Playwright is not installed"}, async () => {
   const {blocks} = await build();
   const browser = await chromium.launch();
   try {
@@ -108,7 +109,7 @@ test("Pasting the interface block without the engine block explains what is miss
     await page.setContent("<!doctype html><html><body>" + blocks.css + blocks.interface + "</body></html>");
     const notice = page.locator("[data-ui=notice]");
     await notice.waitFor({state: "visible"});
-    assert.match(await notice.innerText(), /game engine block is missing/);
+    assert.match(await notice.innerText(), /A game block is missing\. Paste the three blocks in order/);
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

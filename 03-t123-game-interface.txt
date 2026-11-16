@@ -3,139 +3,23 @@
 (async () => {
 "use strict";
 
-const engine = window.__omfEngine;
-if (!engine) {
+const shared = window.__omfModules || {};
+if (!shared.hash || !shared.tuning || !shared.scenario || !shared.rules || !shared.progress || !shared.clock || !shared.storage || !shared.sync) {
   const notice = document.querySelector('#one-market-first [data-ui="notice"]');
   if (notice) {
-    notice.textContent = "The game engine block is missing. Paste the three blocks in order: 1 HTML and styles, 2 game engine, 3 game interface.";
+    notice.textContent = "A game block is missing. Paste the three blocks in order: 1 HTML, styles and data, 2 game engine, 3 game interface.";
     notice.hidden = false;
   }
   return;
 }
-const __omf_hash = engine.hash;
-const __omf_tuning = engine.tuning;
-const __omf_scenario = engine.scenario;
-const __omf_rules = engine.rules;
-const __omf_clock = engine.clock;
-const __omf_storage = engine.storage;
-
-// src/sync.mjs
-const __omf_sync = (() => {
-const { replay } = __omf_rules;
-const { hash53 } = __omf_hash;
-const { trueNow, clockStatus } = __omf_clock;
-const { readSynced, writeSynced } = __omf_storage;
-// Optional second copy of every locked decision in a Google Sheet (Apps Script web app).
-// The game never depends on it: decisions are always saved locally first, the number of confirmed
-// decisions is remembered per table, and a failed send is simply retried with the same events.
-// Events carry a deterministic id, so the sheet can drop duplicates and a re-send is always safe.
-
-const SEPARATOR = "␟";
-const state = {endpoint: "", status: "off", total: 0, pending: 0, error: ""};
-let sending = null;
-
-function configureSync(url) {
-  const endpoint = String(url || "").trim();
-  state.endpoint = /^https:\/\/[^\s]+$/.test(endpoint) ? endpoint : "";
-  state.status = state.endpoint ? "idle" : "off";
-  state.error = "";
-}
-
-function syncStatus() {
-  return {...state};
-}
-
-// One event per locked decision. Each carries a chain hash over everything locked before it,
-// so a decision that was rewritten later produces a different chain for the same round.
-function buildEvents(record) {
-  const {path} = replay(record);
-  let chain = "";
-  return record.history.map((event, seq) => {
-    const body = [record.room, record.team, seq, event.round, event.choice, event.method, event.at, event.evidence, event.tradeoff].join(SEPARATOR);
-    chain = hash53(chain + SEPARATOR + body);
-    const step = path[seq];
-    return {
-      id: record.room + ":" + record.team + ":" + seq + ":" + chain,
-      room: record.room, team: record.team, market: record.market, session: record.session, seq,
-      round: event.round, choice: event.choice, method: event.method, label: step.label, cost: step.cost, credits: step.credits,
-      clientTime: event.at, evidence: event.evidence, tradeoff: event.tradeoff, chain, content: record.content || ""
-    };
-  });
-}
-
-// The leading run of events that the sheet reports as stored (or already there).
-function confirmedPrefix(events, reply) {
-  const known = new Set([...(reply.saved || []), ...(reply.duplicates || [])]);
-  let count = 0;
-  while (count < events.length && known.has(events[count].id)) count++;
-  return count;
-}
-
-async function transmit(events, request) {
-  const body = JSON.stringify({
-    v: 1, sentAt: new Date(trueNow()).toISOString(), clockOffsetMs: Math.round(clockStatus().offset), events
-  });
-  const options = {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, body, redirect: "follow"};
-  try {
-    const response = await request(state.endpoint, options);
-    if (!response.ok) throw new Error("The sheet answered with status " + response.status + ".");
-    const reply = await response.json();
-    if (!reply?.ok) throw new Error(reply?.error || "The sheet rejected the request.");
-    return {confirmed: confirmedPrefix(events, reply), readable: true, rejected: reply.rejected || []};
-  } catch (error) {
-    if (!(error instanceof TypeError)) throw error;
-    // Offline, or the reply cannot be read from this origin. A request without a readable reply
-    // can still reach the sheet: send once more as an opaque request and report it as unconfirmed.
-    await request(state.endpoint, {...options, mode: "no-cors"});
-    return {confirmed: events.length, readable: false, rejected: []};
-  }
-}
-
-async function run(record, request, force) {
-  try {
-    const events = buildEvents(record);
-    const done = force ? 0 : readSynced(record.room, record.team, state.endpoint);
-    const unsent = events.slice(done);
-    state.total = events.length;
-    state.pending = unsent.length;
-    if (!unsent.length) {
-      state.status = events.length ? (state.status === "unconfirmed" ? "unconfirmed" : "ok") : "idle";
-      return syncStatus();
-    }
-    state.status = "sending";
-    const result = await transmit(unsent, request);
-    writeSynced(record.room, record.team, state.endpoint, done + result.confirmed);
-    state.pending = unsent.length - result.confirmed;
-    state.error = result.rejected.length ? "The sheet rejected " + result.rejected.length + " decision(s)." : "";
-    state.status = state.pending ? "retry" : result.readable ? "ok" : "unconfirmed";
-  } catch (error) {
-    state.status = "retry";
-    state.error = error.message || "The sheet could not be reached.";
-  }
-  return syncStatus();
-}
-
-// Sends every decision the sheet has not confirmed yet. Safe to call as often as needed;
-// a call that arrives while one is running joins it.
-function flushSync(record, {request = globalThis.fetch, force = false} = {}) {
-  if (!state.endpoint || record.mode !== "live") return Promise.resolve(syncStatus());
-  if (!sending) sending = run(record, request, force).finally(() => { sending = null; });
-  return sending;
-}
-
-function syncSummary() {
-  const {status, total, pending, error} = state;
-  const text = {
-    ok: "Google Sheets: all " + total + (total === 1 ? " decision is" : " decisions are") + " saved.",
-    sending: "Google Sheets: sending…",
-    idle: "Google Sheets: connected. Decisions are sent when they are locked.",
-    unconfirmed: "Google Sheets: sent, but the browser cannot read the reply. Check the sheet, or send again.",
-    retry: "Google Sheets: " + pending + (pending === 1 ? " decision is" : " decisions are") + " waiting to be sent. Retrying automatically." + (error ? " (" + error + ")" : "")
-  }[status];
-  return text ? {state: status, text} : null;
-}
-return { configureSync, syncStatus, buildEvents, flushSync, syncSummary };
-})();
+const __omf_hash = shared.hash;
+const __omf_tuning = shared.tuning;
+const __omf_scenario = shared.scenario;
+const __omf_rules = shared.rules;
+const __omf_progress = shared.progress;
+const __omf_clock = shared.clock;
+const __omf_storage = shared.storage;
+const __omf_sync = shared.sync;
 
 // src/presentation.mjs
 const __omf_presentation = (() => {
@@ -545,12 +429,14 @@ return { renderHost, hostClock, handleHostAction, updateHostField, importTeamFil
 
 // src/app.mjs
 await (async () => {
-const { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION } = __omf_scenario;
+const { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION, PROBLEMS } = __omf_scenario;
 const { TEAMS, SCHEDULE, OUTCOMES, makeRoom, marketForTable, roomStart, phaseAt, replay, optionsFor, pendingFact, settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord, contentMismatch, gameScore } = __omf_rules;
 const { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot, activeTeam, newId, newRecord, withSaveLock, knownTable, SaveError, recoveryOptions, requestPersistence, persistenceState, readBackup, markBackup, backupBehind } = __omf_storage;
 const { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename } = __omf_presentation;
 const { renderHost, handleHostAction, updateHostField, importTeamFile, hostClock } = __omf_host;
 const { trueNow, clockStatus, syncClock } = __omf_clock;
+const { gameProgress } = __omf_progress;
+const { tuning } = __omf_tuning;
 const { configureSync, flushSync, syncSummary } = __omf_sync;
 const root = document.querySelector("#one-market-first");
 const ui = Object.fromEntries([...root.querySelectorAll("[data-ui]")].map(element => [element.dataset.ui, element]));
@@ -728,8 +614,36 @@ function optionCard(option, selected, round) {
   </label>`;
 }
 
-function displayClock() {
-  return '<div class="pv-clock" data-clock hidden><span data-clock-label></span><strong data-clock-time></strong></div>';
+function stageLabel(phase) {
+  const round = ROUNDS.find(item => item.id === phase.id);
+  if (round) return round.id + " · " + round.short;
+  return SCHEDULE.find(item => item.id === phase.id)?.label ?? "Board Brief";
+}
+
+// The hidden game result, shown as progress: what is earned so far and the most that is still possible.
+function meterHtml(record) {
+  const progress = gameProgress(record);
+  const earned = Math.round(progress.earned);
+  const possible = Math.round(progress.possible);
+  const summary = progress.final !== null ? "<strong>" + earned + "</strong> · final" : "<strong>" + earned + "</strong> earned · up to <strong>" + possible + "</strong>";
+  return `<div class="pv-meter" data-meter><p class="pv-mono">Board confidence</p>
+    <div class="pv-meter-bar" role="img" aria-label="${earned} points earned, up to ${possible} still possible">
+      <span class="pv-meter-possible" style="width:${possible}%"></span><span class="pv-meter-earned" style="width:${earned}%"></span></div>
+    <p class="pv-meter-text">${summary}</p></div>`;
+}
+
+// The bar that stays on screen while the page scrolls: table and market, stage and its timer, progress and credits.
+function stickyBar(record, state, phase, path) {
+  const market = MARKETS[record.market];
+  return `<div class="pv-sticky" data-sticky><div class="pv-bar">
+      <div class="pv-bar-id"><p class="pv-mono">Table ${record.team} · ${record.mode === "practice" ? "Practice" : esc(record.room)}</p>
+        <h1 class="pv-board-title">${esc(market.name)}</h1><p class="pv-board-context">${esc(market.city)} · ${market.currency}</p></div>
+      <div class="pv-bar-stage"><p class="pv-mono" data-stage-name>${esc(stageLabel(phase))}</p>
+        <div class="pv-clock" data-clock hidden><span data-clock-label></span><strong data-clock-time></strong></div></div>
+      ${meterHtml(record)}
+      <div class="pv-budget" aria-label="${state.credits} of ${CONFIG.budget} credits left"><strong>${state.credits}</strong><span class="pv-mono">Credits<br>left</span>
+        <small class="pv-credits-preview" data-credits-preview hidden></small></div>
+    </div>${progressBar(phase, path)}</div>`;
 }
 
 function roundCard(round, state, record, phase) {
@@ -754,12 +668,15 @@ function decisionForm(round, state, record) {
     <fieldset class="pv-choices"><legend>Choose one action</legend>
       ${options.map(option => optionCard(option, draft.choice, round)).join("")}
     </fieldset>
+    ${round.id === "R6" ? `<label class="pv-field pv-problem" data-problem${draft.choice === "targeted" ? "" : " hidden"}>Which problem does this correction address?
+      <select class="pv-input" data-draft="problem" data-round="R6"><option value="">Select a problem…</option>${PROBLEMS.map(item =>
+        `<option value="${item.id}"${draft.problem === item.id ? " selected" : ""}>${esc(item.label)}</option>`).join("")}</select></label>` : ""}
     <div class="pv-fields">
       <label class="pv-field">Evidence or assumption<textarea data-draft="evidence" data-round="${round.id}" maxlength="${CONFIG.maxNote}" required>${esc(draft.evidence)}</textarea></label>
       <label class="pv-field">Benefit and trade-off<textarea data-draft="tradeoff" data-round="${round.id}" maxlength="${CONFIG.maxNote}" required>${esc(draft.tradeoff)}</textarea></label>
     </div>
     <div class="pv-commit pv-commit--decision"><p data-choice-hint>${esc(output)}</p>
-      <button type="submit" class="pv-button pv-button--primary"${available && isDraftComplete(draft) ? "" : " disabled"}>Lock this choice</button>
+      <button type="submit" class="pv-button pv-button--primary"${available && isDraftComplete(draft, round.id) ? "" : " disabled"}>Lock this choice</button>
     </div></form>`;
 }
 
@@ -770,7 +687,7 @@ function roundScreen(round, state, record, phase, lastEvent) {
   if (lastEvent?.round === round.id) {
     const next = record.mode === "practice" ?
       button(round.id === "R7" ? "Prepare the Board Brief" : "Next round", "next-practice", "primary") :
-      '<p>Continue preparing your worksheet. The next stage opens on the classroom clock.</p>' + displayClock();
+      '<p>Continue preparing your worksheet. The next stage opens on the classroom clock.</p>';
     const note = lastEvent.method === "default" ? "Default recorded" : "Decision locked";
     return stage(title, label, `<div class="pv-record"><p class="pv-mono">${note}</p><h3>${esc(lastEvent.label)}</h3>
         <p>${esc(lastEvent.result)}</p><p>${lastEvent.cost} spent · ${lastEvent.credits} remaining</p></div>
@@ -781,7 +698,7 @@ function roundScreen(round, state, record, phase, lastEvent) {
   }
 
   const beforeBulletin = round.id === "R6" && !phase.bulletinB;
-  return stage(title, label, displayClock() + roundCard(round, state, record, phase) +
+  return stage(title, label, roundCard(round, state, record, phase) +
     (beforeBulletin ? disclosure("Team worksheet", worksheet(round, record), true) +
       (record.mode === "practice" ? '<div class="pv-commit">' + button("Reveal bulletin B", "practice-b", "primary") + "</div>" : "") :
       decisionForm(round, state, record) + disclosure("Team worksheet", worksheet(round, record), true) +
@@ -800,13 +717,21 @@ function logList(path, detailed = false, record = null) {
       (record ? disclosure("Worksheet for " + event.round, worksheet(ROUNDS.find(round => round.id === event.round), record, true)) : "") : "") + "</li>").join("") + "</ol>";
 }
 
+function gameResult(record) {
+  const result = gameScore(record);
+  const share = Math.round(tuning().gameShare * 100);
+  return '<div class="pv-record pv-game-result"><p class="pv-mono">Your game result</p><h3>' + Math.round(result.total) + " / 100</h3>" +
+    '<table class="pv-breakdown"><tbody>' + result.parts.map(part => "<tr><td>" + esc(part.label) + "</td><td>" + Math.round(part.points) + "</td></tr>").join("") + "</tbody></table>" +
+    "<p>The game result counts for " + share + "% of your final grade; the expert panel decides the other " + (100 - share) + "%. The Chair announces the final decision.</p></div>";
+}
+
 function resultScreen(phase, state, path, record) {
   const last = path.at(-1);
   const outcome = OUTCOMES[last.choice];
   const editing = phase.id === "PREP";
   return stage("Board Brief", record.mode === "practice" ? "Practice outcome" : "Investment hearing", `
     <div class="pv-record pv-checkpoint"><p class="pv-mono">Your recommendation</p><h3>${esc(outcome[0])}</h3><p>${esc(outcome[1])}</p></div>
-    ${phase.id === "END" && record.mode === "live" ? '<div class="pv-record"><p class="pv-mono">Game result</p><h3>' + Math.round(gameScore(record).total) + " / 100</h3><p>This result counts towards your final grade together with the expert score. The Chair announces the final decision.</p></div>" : ""}
+    ${gameResult(record)}
     <div class="pv-task"><strong>At the hearing</strong>Three minutes to pitch and one minute for the common question. Show the first customer, two CAGE findings, the Uppsala pathway, what the budget changed and how you handled the emergency.</div>
     <p><strong>Common question</strong> · ${esc(QUESTION)}</p>
     <label class="pv-field pv-block-gap">One-page Board Brief
@@ -824,7 +749,7 @@ function waitingScreen(phase, record) {
     BREAK: ["Seminar break", "R5 opens when the second seminar begins. Save the team JSON before moving to another device."]
   };
   const [title, info] = pauses[phase.id] || ["Waiting for the next stage", "Follow the facilitator’s instructions."];
-  return stage(title, MARKETS[record.market].name, '<p>' + esc(info) + "</p>" + displayClock() +
+  return stage(title, MARKETS[record.market].name, '<p>' + esc(info) + "</p>" +
     '<div class="pv-file-actions">' + button("Download team JSON", "export-json") + "</div>", "review");
 }
 
@@ -836,10 +761,7 @@ function renderTeam(now) {
   const round = ROUNDS.find(item => item.id === phase.id);
   const body = round ? roundScreen(round, state, record, phase, path.at(-1)) :
     path.length === ROUNDS.length ? resultScreen(phase, state, path, record) : waitingScreen(phase, record);
-  return `<div class="pv-board-head"><div><p class="pv-mono">Table ${record.team} · ${record.mode === "practice" ? "Practice" : esc(record.room)}</p>
-      <h1 class="pv-board-title">${esc(market.name)}</h1><p class="pv-board-context">${esc(market.city)} · ${market.currency}</p>
-    </div><div class="pv-budget" aria-label="${state.credits} of ${CONFIG.budget} credits left"><strong>${state.credits}</strong><span class="pv-mono">Credits<br>left</span></div></div>
-    ${progressBar(phase, path)}
+  return `${stickyBar(record, state, phase, path)}
     <div class="pv-layout"><div>${body}</div><aside class="pv-sidebar">
       <section class="pv-sidebar-card"><h3>Decision journal</h3>${logList(path)}
         <div class="pv-file-actions pv-actions">${button("Journal TXT", "export-txt")}${button("Save JSON", "export-json")}</div>
@@ -1048,9 +970,17 @@ function updateChoiceHint() {
   const draft = view.record.drafts[id];
   const {state} = replay(view.record);
   const item = optionsFor(id, state, view.record.market).find(item => item.id === draft?.choice && !item.blocked);
-  form.querySelector('button[type="submit"]').disabled = !item || !isDraftComplete(draft);
+  form.querySelector('button[type="submit"]').disabled = !item || !isDraftComplete(draft, id);
   form.querySelector("[data-choice-hint]").textContent = item ? "You have " + (state.credits - item.cost) + " credits after this choice." :
     "Select an action. Add evidence and a trade-off before you lock it.";
+  const problem = form.querySelector("[data-problem]");
+  if (problem) problem.hidden = draft?.choice !== "targeted";
+  // Preview the spend in the bar that stays on screen.
+  const preview = root.querySelector("[data-credits-preview]");
+  if (preview) {
+    preview.hidden = !item || item.cost === 0;
+    if (item) preview.textContent = state.credits + " → " + (state.credits - item.cost);
+  }
 }
 
 function capture(element) {
@@ -1065,6 +995,13 @@ function capture(element) {
 }
 
 async function submitRound(round, useDefault = false) {
+  const open = view.record;
+  if (open?.mode === "live" && !useDefault) {
+    const phase = phaseAt(open.room, trueNow());
+    const left = phase.to === null ? 0 : roomStart(open.room) + phase.to * 60_000 - trueNow();
+    if (left > 10_000 && !await ask("Lock this decision?", "A locked decision is final: you cannot change it afterwards. " + countdown(left) +
+        " is still left in this stage. Your worksheet notes stay editable until the stage closes.", "Lock decision")) return;
+  }
   const record = await saveChange((current, now) => lockRound(current, round, now, useDefault));
   if (!record) return;
   if (record.mode === "practice") view.practiceReview = round;
@@ -1202,7 +1139,7 @@ root.addEventListener("change", event => {
   const input = event.target;
   if (input.dataset.entry === "team") { view.team = Number(input.value); refreshAssignment(); }
   else if (input.dataset.entry === "market") view.market = input.value;
-  else if (input.dataset.draft === "choice") capture(input);
+  else if (input.dataset.draft === "choice" || input.dataset.draft === "problem") capture(input);
   else if (input === ui.file) {
     const file = input.files[0];
     input.value = "";

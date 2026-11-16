@@ -1,4 +1,4 @@
-import { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION } from './scenario.mjs';
+import { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION, PROBLEMS } from './scenario.mjs';
 import { TEAMS, SCHEDULE, OUTCOMES, makeRoom, marketForTable, roomStart, phaseAt, replay, optionsFor, pendingFact,
   settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord, contentMismatch, gameScore } from './rules.mjs';
 import { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot, activeTeam, newId, newRecord, withSaveLock,
@@ -6,6 +6,8 @@ import { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot,
 import { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename } from './presentation.mjs';
 import { renderHost, handleHostAction, updateHostField, importTeamFile, hostClock } from './host.mjs';
 import { trueNow, clockStatus, syncClock } from './clock.mjs';
+import { gameProgress } from './progress.mjs';
+import { tuning } from './tuning.mjs';
 import { configureSync, flushSync, syncSummary } from './sync.mjs';
 
 const root = document.querySelector("#one-market-first");
@@ -155,8 +157,36 @@ function optionCard(option, selected, round) {
   </label>`;
 }
 
-function displayClock() {
-  return '<div class="pv-clock" data-clock hidden><span data-clock-label></span><strong data-clock-time></strong></div>';
+function stageLabel(phase) {
+  const round = ROUNDS.find(item => item.id === phase.id);
+  if (round) return round.id + " · " + round.short;
+  return SCHEDULE.find(item => item.id === phase.id)?.label ?? "Board Brief";
+}
+
+// The hidden game result, shown as progress: what is earned so far and the most that is still possible.
+function meterHtml(record) {
+  const progress = gameProgress(record);
+  const earned = Math.round(progress.earned);
+  const possible = Math.round(progress.possible);
+  const summary = progress.final !== null ? "<strong>" + earned + "</strong> · final" : "<strong>" + earned + "</strong> earned · up to <strong>" + possible + "</strong>";
+  return `<div class="pv-meter" data-meter><p class="pv-mono">Board confidence</p>
+    <div class="pv-meter-bar" role="img" aria-label="${earned} points earned, up to ${possible} still possible">
+      <span class="pv-meter-possible" style="width:${possible}%"></span><span class="pv-meter-earned" style="width:${earned}%"></span></div>
+    <p class="pv-meter-text">${summary}</p></div>`;
+}
+
+// The bar that stays on screen while the page scrolls: table and market, stage and its timer, progress and credits.
+function stickyBar(record, state, phase, path) {
+  const market = MARKETS[record.market];
+  return `<div class="pv-sticky" data-sticky><div class="pv-bar">
+      <div class="pv-bar-id"><p class="pv-mono">Table ${record.team} · ${record.mode === "practice" ? "Practice" : esc(record.room)}</p>
+        <h1 class="pv-board-title">${esc(market.name)}</h1><p class="pv-board-context">${esc(market.city)} · ${market.currency}</p></div>
+      <div class="pv-bar-stage"><p class="pv-mono" data-stage-name>${esc(stageLabel(phase))}</p>
+        <div class="pv-clock" data-clock hidden><span data-clock-label></span><strong data-clock-time></strong></div></div>
+      ${meterHtml(record)}
+      <div class="pv-budget" aria-label="${state.credits} of ${CONFIG.budget} credits left"><strong>${state.credits}</strong><span class="pv-mono">Credits<br>left</span>
+        <small class="pv-credits-preview" data-credits-preview hidden></small></div>
+    </div>${progressBar(phase, path)}</div>`;
 }
 
 function roundCard(round, state, record, phase) {
@@ -181,12 +211,15 @@ function decisionForm(round, state, record) {
     <fieldset class="pv-choices"><legend>Choose one action</legend>
       ${options.map(option => optionCard(option, draft.choice, round)).join("")}
     </fieldset>
+    ${round.id === "R6" ? `<label class="pv-field pv-problem" data-problem${draft.choice === "targeted" ? "" : " hidden"}>Which problem does this correction address?
+      <select class="pv-input" data-draft="problem" data-round="R6"><option value="">Select a problem…</option>${PROBLEMS.map(item =>
+        `<option value="${item.id}"${draft.problem === item.id ? " selected" : ""}>${esc(item.label)}</option>`).join("")}</select></label>` : ""}
     <div class="pv-fields">
       <label class="pv-field">Evidence or assumption<textarea data-draft="evidence" data-round="${round.id}" maxlength="${CONFIG.maxNote}" required>${esc(draft.evidence)}</textarea></label>
       <label class="pv-field">Benefit and trade-off<textarea data-draft="tradeoff" data-round="${round.id}" maxlength="${CONFIG.maxNote}" required>${esc(draft.tradeoff)}</textarea></label>
     </div>
     <div class="pv-commit pv-commit--decision"><p data-choice-hint>${esc(output)}</p>
-      <button type="submit" class="pv-button pv-button--primary"${available && isDraftComplete(draft) ? "" : " disabled"}>Lock this choice</button>
+      <button type="submit" class="pv-button pv-button--primary"${available && isDraftComplete(draft, round.id) ? "" : " disabled"}>Lock this choice</button>
     </div></form>`;
 }
 
@@ -197,7 +230,7 @@ function roundScreen(round, state, record, phase, lastEvent) {
   if (lastEvent?.round === round.id) {
     const next = record.mode === "practice" ?
       button(round.id === "R7" ? "Prepare the Board Brief" : "Next round", "next-practice", "primary") :
-      '<p>Continue preparing your worksheet. The next stage opens on the classroom clock.</p>' + displayClock();
+      '<p>Continue preparing your worksheet. The next stage opens on the classroom clock.</p>';
     const note = lastEvent.method === "default" ? "Default recorded" : "Decision locked";
     return stage(title, label, `<div class="pv-record"><p class="pv-mono">${note}</p><h3>${esc(lastEvent.label)}</h3>
         <p>${esc(lastEvent.result)}</p><p>${lastEvent.cost} spent · ${lastEvent.credits} remaining</p></div>
@@ -208,7 +241,7 @@ function roundScreen(round, state, record, phase, lastEvent) {
   }
 
   const beforeBulletin = round.id === "R6" && !phase.bulletinB;
-  return stage(title, label, displayClock() + roundCard(round, state, record, phase) +
+  return stage(title, label, roundCard(round, state, record, phase) +
     (beforeBulletin ? disclosure("Team worksheet", worksheet(round, record), true) +
       (record.mode === "practice" ? '<div class="pv-commit">' + button("Reveal bulletin B", "practice-b", "primary") + "</div>" : "") :
       decisionForm(round, state, record) + disclosure("Team worksheet", worksheet(round, record), true) +
@@ -227,13 +260,21 @@ function logList(path, detailed = false, record = null) {
       (record ? disclosure("Worksheet for " + event.round, worksheet(ROUNDS.find(round => round.id === event.round), record, true)) : "") : "") + "</li>").join("") + "</ol>";
 }
 
+function gameResult(record) {
+  const result = gameScore(record);
+  const share = Math.round(tuning().gameShare * 100);
+  return '<div class="pv-record pv-game-result"><p class="pv-mono">Your game result</p><h3>' + Math.round(result.total) + " / 100</h3>" +
+    '<table class="pv-breakdown"><tbody>' + result.parts.map(part => "<tr><td>" + esc(part.label) + "</td><td>" + Math.round(part.points) + "</td></tr>").join("") + "</tbody></table>" +
+    "<p>The game result counts for " + share + "% of your final grade; the expert panel decides the other " + (100 - share) + "%. The Chair announces the final decision.</p></div>";
+}
+
 function resultScreen(phase, state, path, record) {
   const last = path.at(-1);
   const outcome = OUTCOMES[last.choice];
   const editing = phase.id === "PREP";
   return stage("Board Brief", record.mode === "practice" ? "Practice outcome" : "Investment hearing", `
     <div class="pv-record pv-checkpoint"><p class="pv-mono">Your recommendation</p><h3>${esc(outcome[0])}</h3><p>${esc(outcome[1])}</p></div>
-    ${phase.id === "END" && record.mode === "live" ? '<div class="pv-record"><p class="pv-mono">Game result</p><h3>' + Math.round(gameScore(record).total) + " / 100</h3><p>This result counts towards your final grade together with the expert score. The Chair announces the final decision.</p></div>" : ""}
+    ${gameResult(record)}
     <div class="pv-task"><strong>At the hearing</strong>Three minutes to pitch and one minute for the common question. Show the first customer, two CAGE findings, the Uppsala pathway, what the budget changed and how you handled the emergency.</div>
     <p><strong>Common question</strong> · ${esc(QUESTION)}</p>
     <label class="pv-field pv-block-gap">One-page Board Brief
@@ -251,7 +292,7 @@ function waitingScreen(phase, record) {
     BREAK: ["Seminar break", "R5 opens when the second seminar begins. Save the team JSON before moving to another device."]
   };
   const [title, info] = pauses[phase.id] || ["Waiting for the next stage", "Follow the facilitator’s instructions."];
-  return stage(title, MARKETS[record.market].name, '<p>' + esc(info) + "</p>" + displayClock() +
+  return stage(title, MARKETS[record.market].name, '<p>' + esc(info) + "</p>" +
     '<div class="pv-file-actions">' + button("Download team JSON", "export-json") + "</div>", "review");
 }
 
@@ -263,10 +304,7 @@ function renderTeam(now) {
   const round = ROUNDS.find(item => item.id === phase.id);
   const body = round ? roundScreen(round, state, record, phase, path.at(-1)) :
     path.length === ROUNDS.length ? resultScreen(phase, state, path, record) : waitingScreen(phase, record);
-  return `<div class="pv-board-head"><div><p class="pv-mono">Table ${record.team} · ${record.mode === "practice" ? "Practice" : esc(record.room)}</p>
-      <h1 class="pv-board-title">${esc(market.name)}</h1><p class="pv-board-context">${esc(market.city)} · ${market.currency}</p>
-    </div><div class="pv-budget" aria-label="${state.credits} of ${CONFIG.budget} credits left"><strong>${state.credits}</strong><span class="pv-mono">Credits<br>left</span></div></div>
-    ${progressBar(phase, path)}
+  return `${stickyBar(record, state, phase, path)}
     <div class="pv-layout"><div>${body}</div><aside class="pv-sidebar">
       <section class="pv-sidebar-card"><h3>Decision journal</h3>${logList(path)}
         <div class="pv-file-actions pv-actions">${button("Journal TXT", "export-txt")}${button("Save JSON", "export-json")}</div>
@@ -475,9 +513,17 @@ function updateChoiceHint() {
   const draft = view.record.drafts[id];
   const {state} = replay(view.record);
   const item = optionsFor(id, state, view.record.market).find(item => item.id === draft?.choice && !item.blocked);
-  form.querySelector('button[type="submit"]').disabled = !item || !isDraftComplete(draft);
+  form.querySelector('button[type="submit"]').disabled = !item || !isDraftComplete(draft, id);
   form.querySelector("[data-choice-hint]").textContent = item ? "You have " + (state.credits - item.cost) + " credits after this choice." :
     "Select an action. Add evidence and a trade-off before you lock it.";
+  const problem = form.querySelector("[data-problem]");
+  if (problem) problem.hidden = draft?.choice !== "targeted";
+  // Preview the spend in the bar that stays on screen.
+  const preview = root.querySelector("[data-credits-preview]");
+  if (preview) {
+    preview.hidden = !item || item.cost === 0;
+    if (item) preview.textContent = state.credits + " → " + (state.credits - item.cost);
+  }
 }
 
 function capture(element) {
@@ -492,6 +538,13 @@ function capture(element) {
 }
 
 async function submitRound(round, useDefault = false) {
+  const open = view.record;
+  if (open?.mode === "live" && !useDefault) {
+    const phase = phaseAt(open.room, trueNow());
+    const left = phase.to === null ? 0 : roomStart(open.room) + phase.to * 60_000 - trueNow();
+    if (left > 10_000 && !await ask("Lock this decision?", "A locked decision is final: you cannot change it afterwards. " + countdown(left) +
+        " is still left in this stage. Your worksheet notes stay editable until the stage closes.", "Lock decision")) return;
+  }
   const record = await saveChange((current, now) => lockRound(current, round, now, useDefault));
   if (!record) return;
   if (record.mode === "practice") view.practiceReview = round;
@@ -629,7 +682,7 @@ root.addEventListener("change", event => {
   const input = event.target;
   if (input.dataset.entry === "team") { view.team = Number(input.value); refreshAssignment(); }
   else if (input.dataset.entry === "market") view.market = input.value;
-  else if (input.dataset.draft === "choice") capture(input);
+  else if (input.dataset.draft === "choice" || input.dataset.draft === "problem") capture(input);
   else if (input === ui.file) {
     const file = input.files[0];
     input.value = "";

@@ -29,14 +29,14 @@ export function buildEvents(record) {
   const {path} = replay(record);
   let chain = "";
   return record.history.map((event, seq) => {
-    const body = [record.room, record.team, seq, event.round, event.choice, event.method, event.at, event.evidence, event.tradeoff].join(SEPARATOR);
+    const body = [record.room, record.team, seq, event.round, event.choice, event.method, event.at, event.evidence, event.tradeoff, event.problem ?? ""].join(SEPARATOR);
     chain = hash53(chain + SEPARATOR + body);
     const step = path[seq];
     return {
       id: record.room + ":" + record.team + ":" + seq + ":" + chain,
       room: record.room, team: record.team, market: record.market, session: record.session, seq,
       round: event.round, choice: event.choice, method: event.method, label: step.label, cost: step.cost, credits: step.credits,
-      clientTime: event.at, evidence: event.evidence, tradeoff: event.tradeoff, chain, content: record.content || ""
+      clientTime: event.at, evidence: event.evidence, tradeoff: event.tradeoff, problem: event.problem ?? "", chain, content: record.content || ""
     };
   });
 }

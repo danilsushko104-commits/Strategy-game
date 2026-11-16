@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG, MARKETS, ROUNDS, RUBRIC } from '../src/scenario.mjs';
 import { LEGACY, useTuning } from '../src/tuning.mjs';
-import { SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, optionsFor, replay, settleDeadlines,
+import { SCHEDULE, problemFor, makeRoom, roomStart, marketForTable, phaseAt, optionsFor, replay, settleDeadlines,
   updateDraft, updateNote, updateBrief, lockRound, validateRecord, scoreJury, compareScores } from '../src/rules.mjs';
 
 // These tests pin the rule mechanics with equal prices and no chance (the game before v3).
@@ -25,6 +25,8 @@ function lock(current, choice, now = start, fallback = false) {
     current = updateDraft(current, round, "choice", choice, now);
     current = updateDraft(current, round, "evidence", "Relevant evidence", now);
     current = updateDraft(current, round, "tradeoff", "Cost of the alternative", now);
+    // Correcting one channel also names the problem; these tests name the right one.
+    if (round === "R6" && choice === "targeted") current = updateDraft(current, round, "problem", problemFor(current.market, replay(current).state.profile), now);
   }
   return lockRound(current, round, now, fallback);
 }

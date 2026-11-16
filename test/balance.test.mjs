@@ -2,13 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG, MARKETS } from '../src/scenario.mjs';
 import { LEGACY, V3, tuning, useTuning, retestDelta } from '../src/tuning.mjs';
-import { price, optionsFor, replay, gameScore, finalScore } from '../src/rules.mjs';
+import { price, optionsFor, replay, gameScore, finalScore, problemFor, isDraftComplete, updateDraft, settleDeadlines, marketForTable, makeRoom } from '../src/rules.mjs';
 import { analyze } from '../scripts/balance.mjs';
 
 const when = "2026-01-01T00:00:00.000Z";
 function played(choices, {market = "indonesia", room = "PRACTICE", team = 1, mode = "practice", session = "s"} = {}) {
   return {game: CONFIG.game, version: CONFIG.version, mode, team, market, room, session, drafts: {}, notes: {}, brief: "", bulletinB: true,
-    history: choices.map((choice, index) => ({round: "R" + (index + 1), choice, method: "submitted", at: when, evidence: "e", tradeoff: "t"}))};
+    history: choices.map((choice, index) => ({round: "R" + (index + 1), choice, method: "submitted", at: when, evidence: "e", tradeoff: "t",
+      ...(index === 5 && choice === "targeted" ? {problem: problemFor(market, choices[0])} : {})}))};
 }
 const withTuning = (config, run) => { const restore = useTuning(config); try { return run(); } finally { restore(); } };
 const forced = delta => ({...V3, randomness: {retestSpread: 0.2, draw: () => delta}});
@@ -16,7 +17,7 @@ const r7 = (record, market = "indonesia") => optionsFor("R7", replay({...record,
 
 test("The approved settings are active and the legacy game stays available as plain rules", () => {
   assert.equal(tuning(), V3);
-  assert.equal(V3.gameShare, 0.2);
+  assert.equal(V3.gameShare, 0.35);
   assert.equal(V3.askPilotTwo, true);
   assert.equal(V3.randomness.retestSpread, 0.2);
   withTuning(LEGACY, () => {
@@ -128,7 +129,7 @@ test("The game score ranks the requests, rewards a kept reserve only behind a re
 test("The final grade mixes expert and game scores in the configured proportion", () => {
   assert.equal(finalScore(80, 50, 0.1), 77);
   assert.equal(finalScore(80, 50, 0), 80);
-  assert.equal(finalScore(60, 100), 68, "the approved setting counts the game score for 20%");
+  assert.equal(finalScore(60, 100), 74, "the approved setting counts the game score for 35%");
   assert.equal(withTuning(LEGACY, () => finalScore(60, 100)), 60, "the legacy setting ignores the game score");
 });
 
@@ -169,7 +170,8 @@ test("All five Board requests and every purchasable action have an affordable pa
       for (const item of optionsFor(round, replay(record).state, marketId)) {
         if (item.blocked) continue;
         actions.add(round + "." + item.id);
-        walk({...record, history: [...record.history, {round, choice: item.id, method: "submitted", at: when, evidence: "e", tradeoff: "t"}]});
+        const problem = round === "R6" && item.id === "targeted" ? {problem: problemFor(marketId, record.history[0].choice)} : {};
+        walk({...record, history: [...record.history, {round, choice: item.id, method: "submitted", at: when, evidence: "e", tradeoff: "t", ...problem}]});
       }
     };
     // Chance decides the retest, so look at both a lucky and an unlucky world.
@@ -182,4 +184,84 @@ test("All five Board requests and every purchasable action have an affordable pa
     }
     assert.ok(completed > 1000, marketId + " has only " + completed + " paths");
   }
+});
+
+// ---- R6: naming the problem a one-channel correction addresses ----
+
+const targetedPath = (market, profile, problem) => {
+  const record = played(["A", "desk", "pilot", "verify", "narrow", "targeted"], {market});
+  record.history[0].choice = profile;
+  record.history[5].problem = problem;
+  return record;
+};
+
+test("Naming the problem the customers are confused about keeps the correction proven; another problem misses", () => {
+  withTuning(LEGACY, () => {
+    const hit = replay(targetedPath("indonesia", "A", "coverage")).state;
+    assert.equal(hit.launchEvidence, true);
+    assert.match(hit.result, /Four of five mock users/);
+    for (const wrong of ["fees", "speed", "amount", "status"]) {
+      const miss = replay(targetedPath("indonesia", "A", wrong)).state;
+      assert.equal(miss.launchEvidence, false, wrong);
+      assert.match(miss.result, /confused about something else/);
+      assert.match(miss.result, new RegExp("addresses " + (wrong === "status" ? "status" : wrong)));
+      assert.equal(miss.credits, hit.credits, "naming the wrong problem costs the same");
+      assert.equal(miss.cohorts, 1);
+    }
+  });
+});
+
+test("A profile whose emergency is about two problems accepts either of them", () => {
+  withTuning(LEGACY, () => {
+    for (const problem of ["speed", "fees"]) assert.equal(replay(targetedPath("philippines", "B", problem)).state.launchEvidence, true, problem);
+    assert.equal(replay(targetedPath("philippines", "B", "coverage")).state.launchEvidence, false);
+  });
+});
+
+test("Every profile's emergency note maps to a listed problem, and problemFor names the first", () => {
+  for (const [id, market] of Object.entries(MARKETS)) {
+    for (const [key, profile] of Object.entries(market.profiles)) {
+      assert.ok(profile.problems.length >= 1, id + " " + key);
+      assert.equal(problemFor(id, key), profile.problems[0]);
+    }
+  }
+  assert.equal(problemFor("philippines", "B"), "speed");
+});
+
+test("A one-channel correction is incomplete until a problem is named, and unknown problems are refused", () => {
+  const complete = {choice: "targeted", evidence: "e", tradeoff: "t"};
+  assert.equal(isDraftComplete(complete, "R6"), false);
+  assert.equal(isDraftComplete({...complete, problem: "coverage"}, "R6"), true);
+  assert.equal(isDraftComplete({...complete, problem: "colour"}, "R6"), false);
+  assert.equal(isDraftComplete(complete, "R5"), true, "other rounds are unchanged");
+  assert.equal(isDraftComplete({...complete, choice: "full"}, "R6"), true, "correcting every channel needs no problem");
+
+  const base = played(["A", "desk", "pilot", "verify", "narrow"], {market: "indonesia"});
+  const live = {...base, history: base.history};
+  const choose = (record, field, value) => updateDraft(record, "R6", field, value, 0);
+  assert.throws(() => choose(live, "problem", "colour"), /listed problems/);
+  assert.throws(() => updateDraft(live, "R5", "problem", "fees", 0), /listed problems|not open|closed|already been locked/);
+  assert.equal(choose(live, "problem", "coverage").drafts.R6.problem, "coverage");
+
+  const incomplete = {...base, history: [...base.history, {round: "R6", choice: "targeted", method: "submitted", at: when, evidence: "e", tradeoff: "t"}]};
+  assert.throws(() => replay(incomplete), /Incomplete decision in R6/);
+});
+
+test("A deadline locks a complete targeted draft only when it names a problem; otherwise the free default applies", () => {
+  const start = Date.parse("2026-11-14T18:30:00+03:00");
+  const room = makeRoom(start, 0, "ABC");
+  const path = ["A", "desk", "pilot", "verify", "narrow"];
+  const at = minutes => new Date(start + minutes * 60_000).toISOString();
+  const history = path.map((choice, index) => ({round: "R" + (index + 1), choice, method: "submitted", at: at([5, 20, 40, 55, 75][index]), evidence: "e", tradeoff: "t"}));
+  const live = problem => ({game: CONFIG.game, version: CONFIG.version, mode: "live", team: 1, market: marketForTable(room, 1), room, session: "s", history,
+    drafts: {R6: {choice: "targeted", evidence: "e", tradeoff: "t", ...(problem ? {problem} : {})}}, notes: {}, brief: "", bulletinB: false});
+  withTuning(LEGACY, () => {
+    const named = settleDeadlines(live(problemFor(marketForTable(room, 1), "A")), start + 104 * 60_000);
+    assert.equal(named.history[5].method, "deadline");
+    assert.equal(named.history[5].choice, "targeted");
+    assert.equal(named.history[5].problem, problemFor(marketForTable(room, 1), "A"));
+    const unnamed = settleDeadlines(live(""), start + 104 * 60_000);
+    assert.equal(unnamed.history[5].method, "default");
+    assert.equal(unnamed.history[5].choice, "hold");
+  });
 });

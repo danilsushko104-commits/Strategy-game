@@ -38,7 +38,7 @@ export const MARKETS = {
       ["Payment context", "QRIS is Bank Indonesia’s interoperable QR standard. QRIS payment service providers need Bank Indonesia approval. Check whether the exact cross-border use case and provider are supported."],
       ["Economic context", "2024 GDP per capita was about US$4,800. Test the value of the projected fee or convenience gain with the actual user."]
     ],
-    sources: ["qris", "bot", "indicators"],
+    sources: ["qris", "indicators"],
     candidates: {
       pilot: ["Archipelago Pay Services", "It will scope one Jakarta-area use case with one cohort. The agreement has to identify the permitted activity and the support handoff."],
       alliance: ["Nusantara Connect", "The candidate can introduce travel and merchant distribution partners. It wants joint approval of the public offer and a separate agreement for each distribution channel."],
@@ -59,6 +59,7 @@ export const MARKETS = {
         competitor: "A competing payment app publishes a coverage list for one regional travel route. A simple map will no longer be a distinctive promise.",
         narrow: "Limit the offer to one Jakarta-to-Singapore journey and make coverage explicit. In a five-person mock screen, four could identify the supported payment method and where it would work.",
         incident: "Travellers ask whether every QR code in Singapore will work. A valid correction names the supported provider and payment method and describes the test’s limit.",
+        problems: ["coverage"],
         review: "Check who authorizes the list of supported providers and where the scope limitation appears."
       },
       B: {
@@ -71,6 +72,7 @@ export const MARKETS = {
         competitor: "A competing transfer app adds a shareable receipt. The team has to explain what its receipt or status does better.",
         narrow: "Focus on one SGD-to-IDR payment purpose and a receipt both parties can read. Four of five mock users could tell who had received money and which amount was confirmed.",
         incident: "Freelancers ask whether a ‘sent’ message guarantees that IDR has arrived. A valid correction distinguishes the statuses and the evidence available at each.",
+        problems: ["status"],
         review: "Check the meanings of ‘sent’ and ‘received’ and the details the provider lets both parties see."
       }
     }
@@ -103,6 +105,7 @@ export const MARKETS = {
         competitor: "A competing wallet partner adds a PHP-received estimate before confirmation. A single visible quote is becoming standard for this use case.",
         narrow: "Focus on one SGD-to-PHP payout method and show the recipient what was credited. Four of five mock users distinguished an estimate from a credited amount.",
         incident: "Families ask whether each recipient will get the exact PHP amount shown in the screenshot. A valid correction distinguishes a conditional estimate from the final credited amount.",
+        problems: ["amount"],
         review: "Check how the quoted amount and wallet payout appear to both parties and who answers recipient complaints."
       },
       B: {
@@ -118,6 +121,7 @@ export const MARKETS = {
         competitor: "A competing issuer adds travel-payment status and help in one screen. The team has to find a more specific advantage.",
         narrow: "Offer one Singapore spending journey for exchange students, with a clear response to rejected payments. Four of five mock users found the next action.",
         incident: "Students ask whether all payments abroad work instantly and without FX charges. A valid correction states the supported journey, the fee basis and what to do after a decline.",
+        problems: ["speed", "fees"],
         review: "Check the conditions for card acceptance, the FX wording and which party handles declined payments."
       }
     }
@@ -150,6 +154,7 @@ export const MARKETS = {
         competitor: "A travel-card provider adds an all-in FX comparison for one regional route.",
         narrow: "Focus on repeat Bangkok-to-Singapore travellers and one pre-payment cost comparison. Four of five mock users correctly compared the total THB cost.",
         incident: "Travellers ask if the published ‘zero fees’ covers every conversion. A valid correction specifies what the quote includes and where separate charges can arise.",
+        problems: ["fees"],
         review: "Check where the all-in quote applies and how the team flags separate charges."
       },
       B: {
@@ -165,6 +170,7 @@ export const MARKETS = {
         competitor: "A participating bank separates delivered amount and estimated arrival time in its transfer flow.",
         narrow: "Offer one scheduled THB-to-SGD transfer scenario with separate copy for delivered amount and arrival. Four of five mock users interpreted both correctly.",
         incident: "Families ask whether all transfers to Singapore are instant. A valid correction identifies the supported route and describes delivery estimates conditionally.",
+        problems: ["speed"],
         review: "Check which institutions and transfer types the promised timing actually covers."
       }
     }
@@ -173,10 +179,10 @@ export const MARKETS = {
     name: "Vietnam", city: "Ho Chi Minh City", currency: "VND", code: "VN",
     facts: [
       ["Working context", "Use Vietnamese in the onboarding and support prototypes. Ho Chi Minh City is one hour behind Singapore."],
-      ["Payment context", "NAPAS FastFund 247 uses VietQR for domestic transfers among participating member banks. The Bank of Thailand documents a separate Vietnam–Thailand QR linkage for participating banks."],
+      ["Payment context", "NAPAS FastFund 247 uses VietQR for domestic transfers among participating member banks. The cross-border route to Singapore, the payout step and the exact use case still need separate checks."],
       ["Economic context", "2024 GDP per capita was about US$4,700. The economic case depends on the selected user’s current receipt, transfer or travel experience."]
     ],
-    sources: ["napas", "bot", "indicators"],
+    sources: ["napas", "indicators"],
     candidates: {
       pilot: ["Delta Payment Services", "It will scope one Ho Chi Minh City cohort. Customer support covers agreed hours and needs a clear escalation handoff."],
       alliance: ["Viet Gateway Network", "It offers introductions to local banks and prospective recruitment partners. Access depends on contracts and scoped permissions."],
@@ -194,6 +200,7 @@ export const MARKETS = {
         competitor: "A local provider adds a downloadable status receipt in one competing transfer flow.",
         narrow: "Focus on one SGD-to-VND payment purpose and a bilingual proof-of-receipt screen. Four of five mock users could locate the received amount and identify its status.",
         incident: "Customers ask whether every VietQR code can receive international funds. A valid correction names the intended payout route and explains the distinction from the domestic service.",
+        problems: ["coverage"],
         review: "Check the authorized international route, the local payout step and what the receipt can assert."
       },
       B: {
@@ -209,11 +216,22 @@ export const MARKETS = {
         competitor: "A competing travel-card provider adds Vietnamese-language travel support.",
         narrow: "Focus on Vietnamese-speaking travellers on one Singapore journey. Four of five mock users found the correct support handoff after a failed payment.",
         incident: "Travellers ask whether a domestic QR setup guarantees acceptance in Singapore. A valid correction names eligible payment methods and gives a support contact.",
+        problems: ["coverage"],
         review: "Check the proposed payment method’s geographic scope and the availability of Vietnamese-language support."
       }
     }
   }
 };
+
+// What the team can say its correction addresses in R6. Each profile's emergency note is about one of
+// these (some about two); naming a different one does not reach the customers.
+export const PROBLEMS = [
+  {id: "fees", label: "Fees: ‘zero fees’ and what the price includes"},
+  {id: "speed", label: "Speed: ‘instant delivery’ and timing"},
+  {id: "coverage", label: "Coverage: where and with whom the payment works"},
+  {id: "amount", label: "Amount: what the recipient finally receives"},
+  {id: "status", label: "Status: what ‘sent’ and ‘received’ prove"}
+];
 
 export const BRIEF = [
   "Revolut hires four consulting teams. Each team receives one market for a potential retail launch built around international transfers and multi-currency payments. Start with one user segment, one use case and one customer acquisition channel.",

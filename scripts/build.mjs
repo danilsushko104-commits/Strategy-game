@@ -12,13 +12,17 @@ export const OUTPUT_BLOCKS = {
   interface: "03-t123-game-interface.txt"
 };
 
-// Dependency order: a module may only import from modules listed before it.
-// The engine block holds the first group, the interface block the second and last.
-export const ENGINE_MODULES = ["hash", "tuning", "scenario", "rules", "clock", "storage"];
-export const INTERFACE_MODULES = ["sync", "presentation", "host", "app"];
-export const MODULES = [...ENGINE_MODULES, ...INTERFACE_MODULES];
+// Dependency order: a module may only import from modules listed before it, so the blocks run in order.
+// Block 1 holds the styles, the markup and the game data; block 2 the rules; block 3 the interface.
+// They are sized to stay near 70 KB each.
+export const BLOCK_MODULES = {
+  css: ["hash", "tuning", "scenario"],
+  engine: ["rules", "progress", "clock", "storage", "sync"],
+  interface: ["presentation", "host", "app"]
+};
+export const MODULES = Object.values(BLOCK_MODULES).flat();
 const ENTRY = "app";
-export const ENGINE_GLOBAL = "__omfEngine";
+export const SHARED_GLOBAL = "__omfModules";
 
 const IMPORT = /^import\s*\{([^}]*)\}\s*from\s*['"]\.\/(\w+)\.mjs['"];?[ \t]*\n/gm;
 const EXPORT = /^export\s+((?:async\s+)?(?:function\*?|const|let|class)\s+)(\w+)/gm;
@@ -68,25 +72,33 @@ export async function build() {
   const {parts} = compileModules(sources);
   const part = name => parts[name].replace("<!-- COVER -->", cover.trim());
 
-  const engineCode = ENGINE_MODULES.map(part).join("\n\n");
-  const engineExports = ENGINE_MODULES.map(name => `${name}: __omf_${name}`).join(", ");
-  const interfaceCode = INTERFACE_MODULES.map(part).join("\n\n");
-  const imports = ENGINE_MODULES.map(name => `const __omf_${name} = engine.${name};`).join("\n");
+  const keys = Object.keys(BLOCK_MODULES);
+  const missing = "A game block is missing. Paste the three blocks in order: 1 HTML, styles and data, 2 game engine, 3 game interface.";
+  // The modules of one block as a script. Earlier blocks leave their modules in a shared object; a block checks
+  // that they are all there, explains what is missing otherwise, and makes them available under their own names.
+  const script = key => {
+    const index = keys.indexOf(key);
+    const last = index === keys.length - 1;
+    const earlier = keys.slice(0, index).flatMap(other => BLOCK_MODULES[other]);
+    const own = BLOCK_MODULES[key];
+    const guard = earlier.length ? `const shared = window.${SHARED_GLOBAL} || {};\n` +
+      `if (${earlier.map(name => `!shared.${name}`).join(" || ")}) {\n` +
+      `  const notice = document.querySelector('#one-market-first [data-ui="notice"]');\n` +
+      `  if (notice) {\n    notice.textContent = ${JSON.stringify(missing)};\n    notice.hidden = false;\n  }\n  return;\n}\n` +
+      earlier.map(name => `const __omf_${name} = shared.${name};`).join("\n") + "\n\n" : "";
+    const publish = last ? "" : `\n\nwindow.${SHARED_GLOBAL} = Object.assign(window.${SHARED_GLOBAL} || {}, { ${own.map(name => `${name}: __omf_${name}`).join(", ")} });`;
+    return `<script>\n(${last ? "async " : ""}() => {\n"use strict";\n\n${guard}${own.map(part).join("\n\n")}${publish}\n})();\n</script>\n`;
+  };
 
   const blocks = {
-    css: header(1, "HTML and styles") + "<style>\n" + css.trim() + "\n</style>\n\n" + markup.trim() + "\n" + footer,
-    engine: header(2, "game engine") + '<script>\n(() => {\n"use strict";\n\n' + engineCode +
-      `\n\nwindow.${ENGINE_GLOBAL} = { ${engineExports} };\n})();\n</script>\n` + footer,
-    interface: header(3, "game interface") + '<script>\n(async () => {\n"use strict";\n\n' +
-      `const engine = window.${ENGINE_GLOBAL};\n` +
-      `if (!engine) {\n  const notice = document.querySelector('#one-market-first [data-ui="notice"]');\n` +
-      `  if (notice) {\n    notice.textContent = "The game engine block is missing. Paste the three blocks in order: 1 HTML and styles, 2 game engine, 3 game interface.";\n    notice.hidden = false;\n  }\n  return;\n}\n` +
-      imports + "\n\n" + interfaceCode + "\n})();\n</script>\n" + footer
+    css: header(1, "HTML, styles and game data") + "<style>\n" + css.trim() + "\n</style>\n\n" + markup.trim() + "\n\n" + script("css") + footer,
+    engine: header(2, "game engine") + script("engine") + footer,
+    interface: header(3, "game interface") + script("interface") + footer
   };
 
   for (const [name, text] of Object.entries(blocks)) {
     const scripts = text.slice(text.indexOf("<script>") + 8, text.lastIndexOf("</script>"));
-    if (name !== "css" && /<\/script\s*>/i.test(scripts)) throw new Error(`The ${name} block contains a closing script tag.`);
+    if (/<\/script\s*>/i.test(scripts)) throw new Error(`The ${name} block contains a closing script tag.`);
   }
 
   const html = `<!doctype html>

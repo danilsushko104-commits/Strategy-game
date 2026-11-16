@@ -37,7 +37,7 @@ export const LEGACY = {
 export const V3 = {
   ...LEGACY,
   name: "v3",
-  gameShare: 0.2,
+  gameShare: 0.35,
   askPilotTwo: true,
   markets: {
     indonesia: {price: {alliance: -1, broaden: 1}, testShift: 0, note: "Partners can open distribution cheaply, but each extra channel across an archipelago needs more support."},

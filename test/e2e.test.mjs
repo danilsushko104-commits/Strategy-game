@@ -29,12 +29,14 @@ async function withPage(run, url = pageUrl, allowed = []) {
   }
 }
 
-async function lockCurrentRound(page) {
+// A live room asks before a decision is locked early; `confirm` answers that question.
+async function lockCurrentRound(page, {confirm = false} = {}) {
   if (/emergency/i.test(await page.locator("#omf-stage-title").innerText())) await page.click('button:has-text("Reveal bulletin B")');
   await page.locator("label.pv-choice:has(input[name=choice]:not([disabled])) .pv-choice-card").first().click();
   await page.fill("textarea[data-draft=evidence]", "evidence");
   await page.fill("textarea[data-draft=tradeoff]", "trade-off");
   await page.locator('button:has-text("Lock this choice"):not([disabled])').click();
+  if (confirm) await page.locator('dialog[open] button:has-text("Lock decision")').click();
 }
 
 test("A damaged save opens a recovery screen after a reload and the newest readable copy restores the game", {skip}, async () => {
@@ -73,7 +75,7 @@ test("A live table mirrors its save into IndexedDB and tracks the downloaded bac
     await page.click("button[data-action=home]");
     await page.fill('input[data-entry="room"]', room);
     await page.click('button:has-text("Open team dashboard")');
-    await lockCurrentRound(page);
+    await lockCurrentRound(page, {confirm: true});
     await page.locator(".pv-checkpoint .pv-backup").waitFor();
     assert.match(await page.locator(".pv-checkpoint .pv-backup").innerText(), /No backup file yet/);
     assert.equal(await page.locator(".pv-checkpoint .pv-backup").getAttribute("data-backup-state"), "warn");
@@ -138,7 +140,7 @@ test("Locked decisions reach the sheet, survive an outage and are sent again on 
     await page.locator(".pv-sync").first().waitFor();
 
     // 1) Offline: the decision locks locally and waits.
-    await lockCurrentRound(page);
+    await lockCurrentRound(page, {confirm: true});
     await page.locator('.pv-checkpoint .pv-sync[data-sync-state="retry"]').waitFor();
     assert.match(await page.locator(".pv-checkpoint .pv-sync").innerText(), /1 decision is waiting to be sent/);
     assert.equal(received.length, 0);
@@ -184,7 +186,7 @@ test("After the session the team sees its game result, and the facilitator panel
     const table = page.locator(".pv-scores");
     assert.match(await table.innerText(), /Game/);
     assert.match(await table.locator("tbody").innerText(), /10\.0/);
-    assert.match(await page.locator(".pv-panel", {hasText: "Board ranking"}).innerText(), /20% game result/);
+    assert.match(await page.locator(".pv-panel", {hasText: "Board ranking"}).innerText(), /35% game result/);
     // The checklist follows the import.
     const files = page.locator(".pv-checklist li", {hasText: "Team files collected"});
     assert.match(await files.innerText(), /1 of 4 tables imported with all 7 decisions/);
