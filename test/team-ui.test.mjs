@@ -157,3 +157,28 @@ test("A live room shows the stage timer in the bar and asks before an early lock
     assert.equal(await journal.count(), 1);
   });
 });
+
+test("Choosing another market for a practice table that already has a game asks before replacing it", {skip}, async () => {
+  await withPage(async page => {
+    await openPractice(page, "indonesia");
+    await lockCard(page, "Freelancers");
+    await page.click("button[data-action=home]");
+
+    // Back on the entry screen with another market for the same table: the game asks instead of failing.
+    await page.click("text=Practice without a room");
+    await page.selectOption("select[data-entry=market]", "vietnam");
+    await page.click('button:has-text("Open practice dashboard")');
+    const dialog = page.locator("dialog[open]");
+    await dialog.waitFor();
+    assert.match(await dialog.innerText(), /Table 1 already has a saved practice game for Indonesia \(1 of 7 decisions\)\. Replace it with a new game for Vietnam\?/);
+
+    await dialog.locator('button[value="cancel"]').click();
+    assert.match(await page.locator("#omf-entry-title").innerText(), /Practice without a room/);
+
+    await page.click('button:has-text("Open practice dashboard")');
+    await page.locator('dialog[open] button:has-text("Replace it")').click();
+    await page.locator(".pv-board-title").waitFor();
+    assert.equal(await page.locator(".pv-board-title").innerText(), "Vietnam");
+    assert.equal(await page.locator(".pv-budget strong").innerText(), "9", "a fresh game with the full budget");
+  });
+});

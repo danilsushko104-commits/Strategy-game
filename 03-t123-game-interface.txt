@@ -930,9 +930,18 @@ async function join() {
   const market = view.entryMode === "live" ? marketForTable(room, view.team) : view.market;
   let record;
   try {
+    // A practice table keeps its saved game. Choosing another market means starting over, so ask first.
+    const saved = readSlot(room, view.team);
+    if (saved && saved.market !== market) {
+      const replace = await ask("Start a new practice game?", "Table " + view.team + " already has a saved practice game for " + MARKETS[saved.market].name +
+        " (" + saved.history.length + " of " + ROUNDS.length + " decisions). Replace it with a new game for " + MARKETS[market].name + "?", "Replace it");
+      if (!replace) return;
+      await view.writes;
+      clearSlot(room, view.team);
+    }
     record = await withSaveLock(teamKey(room, view.team), () => {
       let record = readSlot(room, view.team);
-      if (record && record.market !== market) throw new Error("This practice table has a saved market. Open it and reset practice, or choose another table.");
+      if (record && record.market !== market) throw new Error("This table has a saved game for another market. Reopen the page and try again.");
       record = record || newRecord(view.entryMode, room, view.team, market);
       record = settleDeadlines(record, trueNow());
       storeRecord(record);
