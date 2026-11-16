@@ -4,7 +4,7 @@ import { RUBRIC } from '../src/scenario.mjs';
 import { CONFIG } from '../src/scenario.mjs';
 import { LEGACY, useTuning } from '../src/tuning.mjs';
 import { makeRoom, scoreJury, scoreExpert, rankScores, compareScores, standings, gameScore } from '../src/rules.mjs';
-import { csvCell, scoresCsv } from '../src/presentation.mjs';
+import { csvCell, scoresCsv, countdown } from '../src/presentation.mjs';
 
 const room = makeRoom(Date.parse("2026-11-14T18:30:00+03:00"), 0, "ABC"); // tables: Indonesia, Philippines, Thailand, Vietnam
 const full = () => ({complete: true, checks: RUBRIC.map(() => [true, true, true, true])});
@@ -121,4 +121,13 @@ test("The CSV adds the game result and the final grade, or says what is missing"
   assert.equal(ru[3], "3;3;Thailand;70,0;10,0;16,0;80,0;10,0;66,0;80,0;80,0;80,0;complete");
   const withoutFile = scoresCsv(room, mixed, {records: {1: records[1], 2: records[2]}}).slice(1).split("\r\n");
   assert.match(withoutFile[3], /^,3,Thailand,70\.0,10\.0,16\.0,80\.0,,,80\.0,80\.0,80\.0,pending: import the team JSON for the game result$/);
+});
+
+test("A countdown shows minutes and seconds, and adds hours only when there are any", () => {
+  assert.equal(countdown(0), "00:00");
+  assert.equal(countdown(-5000), "00:00");
+  assert.equal(countdown(65_000), "01:05");
+  assert.equal(countdown(59 * 60_000 + 59_000), "59:59");
+  assert.equal(countdown(3_600_000), "1:00:00");
+  assert.equal(countdown((19 * 3600 + 18 * 60 + 18) * 1000), "19:18:18");
 });

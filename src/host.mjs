@@ -1,5 +1,5 @@
 import { CONFIG, MARKETS, BULLETINS, RUBRIC, QUESTION } from './scenario.mjs';
-import { TEAMS, SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, validateRecord, standings, compareScores } from './rules.mjs';
+import { TEAMS, SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, validateRecord, standings, compareScores, hostChecklist } from './rules.mjs';
 import { tuning } from './tuning.mjs';
 import { hostKey, getStored, putStored } from './storage.mjs';
 import { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, scoresCsv } from './presentation.mjs';
@@ -8,7 +8,7 @@ import { trueNow } from './clock.mjs';
 const activeKey = hostKey("active");
 const moscowDate = new Intl.DateTimeFormat("sv-SE", {timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit"});
 function freshPanel() {
-  return {records: {}, grades: {}};
+  return {records: {}, grades: {}, joined: false};
 }
 
 const host = {room: "", start: "", selected: 1, panel: freshPanel()};
@@ -54,6 +54,29 @@ function activeRoom() {
       <div class="pv-clock" data-host-clock><span data-host-phase></span><strong data-host-time></strong></div>
       <p data-host-cue class="pv-block-gap"></p>
     </div>`;
+}
+
+let checklistPhase = null;
+
+function checklistHtml(now) {
+  const {phase, steps, next} = hostChecklist({room: host.room, now, grades: host.panel.grades, records: host.panel.records, joined: host.panel.joined});
+  checklistPhase = phase.id;
+  const marks = {done: "✔", now: "●", later: "○"};
+  const extras = {
+    joined: '<label class="pv-check-line"><input type="checkbox" data-host="joined"' + (host.panel.joined ? " checked" : "") + "> All four tables are in</label>",
+    game: '<p class="pv-inline-note" data-host-progress></p>',
+    files: button("Import team JSON", "import", "", 'data-purpose="host"'),
+    ranking: button("Export scores CSV", "host-scores")
+  };
+  const items = steps.map((step, index) => `<li data-state="${step.state}"><span class="pv-step-mark" aria-hidden="true">${marks[step.state]}</span>
+    <div><strong>${index + 1}. ${esc(step.title)}</strong>${step.state === "now" ? ' <span class="pv-mono">now</span>' : ""}<p>${esc(step.detail)}</p>${step.state === "done" && !["game", "joined"].includes(step.id) ? "" : extras[step.id] ?? ""}</div></li>`).join("");
+  return `<div class="pv-panel pv-checklist" data-host-checklist><h3>What’s next</h3>
+    <p class="pv-next"><strong>${esc(next)}</strong></p><ol class="pv-steps">${items}</ol></div>`;
+}
+
+function refreshChecklist() {
+  const box = document.querySelector("#one-market-first [data-host-checklist]");
+  if (box && host.room) box.outerHTML = checklistHtml(trueNow());
 }
 
 function scoresTable() {
@@ -124,9 +147,9 @@ function guide(room) {
     </div>`);
 }
 
-export function renderHost() {
+export function renderHost(now = trueNow()) {
   return stage("Facilitator dashboard", "Seminar operations",
-    (host.room ? activeRoom() + guide(host.room) + '<div class="pv-block-gap">' + scoresTable() + judgeTable(host.selected) + "</div>" : "") +
+    (host.room ? activeRoom() + checklistHtml(now) + guide(host.room) + '<div class="pv-block-gap">' + scoresTable() + judgeTable(host.selected) + "</div>" : "") +
     '<div class="pv-block-gap">' + (host.room ? disclosure("Set up another room", startForm()) : startForm()) + "</div>", "review");
 }
 
@@ -155,6 +178,17 @@ export function hostClock(root, now) {
   clock.querySelector("[data-host-phase]").textContent = phase.label || phase.id;
   clock.querySelector("[data-host-time]").textContent = delta === null ? "—" : countdown(delta);
   root.querySelector("[data-host-cue]").textContent = cue;
+
+  // The checklist follows the clock: restate it when the phase changes, and keep its progress line live.
+  if (phase.id !== checklistPhase) {
+    const box = root.querySelector("[data-host-checklist]");
+    if (box) box.outerHTML = checklistHtml(now);
+  }
+  const progress = root.querySelector("[data-host-progress]");
+  if (progress) {
+    progress.textContent = phase.id === "SETUP" ? "R1 opens at " + interval(host.room, 0, 1).slice(0, 5) + " Moscow time, in " + (delta === null ? "—" : countdown(delta)) :
+      delta === null ? "The seminar is over." : phase.label + " · " + countdown(delta) + " left in this part";
+  }
 }
 
 function exportScores(russianExcel = false) {
@@ -194,6 +228,12 @@ export function updateHostField(input, render) {
     render();
     return;
   }
+  if (field === "joined") {
+    host.panel.joined = input.checked;
+    storePanel();
+    refreshChecklist();
+    return;
+  }
   if (field !== "check" && field !== "complete") return;
   const team = host.selected;
   const expert = Number(input.dataset.expert);
@@ -212,6 +252,7 @@ export function updateHostField(input, render) {
   storePanel();
   const previous = input.closest(".pv-stage-body").querySelector(".pv-scores").closest(".pv-panel");
   previous.outerHTML = scoresTable();
+  refreshChecklist();
 }
 
 export async function importTeamFile(file, ui) {

@@ -923,11 +923,51 @@ function standings(grades, records = {}) {
     tied: !!row.key && rows.some((other, rival) => rival !== index && other.key && compareScores(other.key, row.key) === 0)}));
 }
 
+// The facilitator's "what's next" list. Only the facilitator's own browser knows these facts: the room,
+// the clock, the imported team files and the expert sheets. Whether the teams have joined cannot be seen,
+// so that step is ticked by hand.
+function hostChecklist({room, now, grades, records, joined}) {
+  const phase = phaseAt(room, now);
+  const counted = tuning().gameShare > 0;
+  const full = TEAMS.filter(team => records?.[team]?.history?.length === ROUNDS.length);
+  const partial = TEAMS.filter(team => records?.[team] && records[team].history.length < ROUNDS.length);
+  const missing = TEAMS.filter(team => !full.includes(team));
+  const sheets = TEAMS.reduce((sum, team) => sum + [0, 1, 2].filter(expert => grades?.[team]?.[expert]?.complete).length, 0);
+  const ranked = standings(grades, records).every(row => row.key);
+  const finished = ["PREP", "PITCH", "DEBRIEF", "END"].includes(phase.id);
+  const list = (tables) => tables.map(team => "table " + team).join(", ");
+  const steps = [
+    {id: "room", title: "Room created", done: true,
+      detail: "Show the room code and the table assignment to the students."},
+    // An imported team file, or a finished game, proves that the tables were in.
+    {id: "joined", title: "Every table has joined", done: !!joined || finished || TEAMS.some(team => records?.[team]),
+      detail: "Each team opens the page and enters the room code with its table number. This page cannot see the teams, so tick the box once you have checked."},
+    {id: "game", title: "The game is played", done: finished,
+      detail: finished ? "All seven rounds are over." : phase.id === "SETUP" ? "R1 has not started yet." : "The rounds are running."},
+    {id: "files", title: "Team files collected", done: counted ? full.length === TEAMS.length : true,
+      detail: (counted ? "" : "Optional without a game result. ") + full.length + " of " + TEAMS.length + " tables imported with all " + ROUNDS.length + " decisions" +
+        (missing.length ? ". Missing: " + list(missing) : "") + (partial.length ? ". Incomplete (a checkpoint): " + list(partial) : "") + "."},
+    {id: "sheets", title: "Expert sheets complete", done: sheets === TEAMS.length * 3,
+      detail: sheets + " of " + TEAMS.length * 3 + " sheets are marked complete (three experts for each of four tables)."},
+    {id: "ranking", title: "Ranking and export", done: ranked,
+      detail: ranked ? "The ranking is ready: check it and export the scores." : "Ready when the two steps above are done."}
+  ];
+  const current = steps.findIndex(step => !step.done);
+  const next = {
+    joined: "Ask every team to open the page and join with the room code and its table number.",
+    game: phase.id === "SETUP" ? "Wait for R1. Explain the mandate and run the practice example." : "Run the seminar. Teams download a checkpoint JSON at the break.",
+    files: "After R7 each team presses Download team JSON. Import every file in the score sheets section.",
+    sheets: "The three experts complete their score sheets for every table.",
+    ranking: "Check the ranking and export the CSV."
+  }[steps[current]?.id] ?? "Everything is done. Keep the team journals and the exported scores.";
+  return {phase, steps: steps.map((step, index) => ({...step, state: step.done ? "done" : index === current ? "now" : "later"})), next};
+}
+
 // Competition ranking: equal scores share a rank. Entries without a score have no rank.
 function rankScores(scores) {
   return scores.map(score => score ? 1 + scores.filter(other => other && compareScores(other, score) < 0).length : null);
 }
-return { SCHEDULE, TEAMS, PRICE, price, OUTCOMES, CONTENT_ID, contentMismatch, makeRoom, roomStart, marketForTable, phaseAt, initialProgress, optionsFor, pendingFact, isDraftComplete, replay, settleDeadlines, lockRound, canReadBulletinB, assertOpen, updateDraft, updateNote, updateBrief, validateRecord, scoreExpert, scoreJury, compareScores, gameScore, finalScore, standings, rankScores };
+return { SCHEDULE, TEAMS, PRICE, price, OUTCOMES, CONTENT_ID, contentMismatch, makeRoom, roomStart, marketForTable, phaseAt, initialProgress, optionsFor, pendingFact, isDraftComplete, replay, settleDeadlines, lockRound, canReadBulletinB, assertOpen, updateDraft, updateNote, updateBrief, validateRecord, scoreExpert, scoreJury, compareScores, gameScore, finalScore, standings, hostChecklist, rankScores };
 })();
 
 // src/clock.mjs

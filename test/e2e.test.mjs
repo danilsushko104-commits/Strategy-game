@@ -185,5 +185,32 @@ test("After the session the team sees its game result, and the facilitator panel
     assert.match(await table.innerText(), /Game/);
     assert.match(await table.locator("tbody").innerText(), /10\.0/);
     assert.match(await page.locator(".pv-panel", {hasText: "Board ranking"}).innerText(), /20% game result/);
+    // The checklist follows the import.
+    const files = page.locator(".pv-checklist li", {hasText: "Team files collected"});
+    assert.match(await files.innerText(), /1 of 4 tables imported with all 7 decisions/);
+    assert.equal(await page.locator('.pv-checklist li[data-state="now"]').getAttribute("data-state"), "now");
+    assert.match(await page.locator(".pv-checklist li[data-state=now]").innerText(), /Team files collected/);
+  });
+});
+
+test("The facilitator checklist guides from the empty room and remembers the tick", {skip}, async () => {
+  await withPage(async page => {
+    await page.click("button[data-action=host]");
+    await page.click('button:has-text("Create a new room")');
+    const now = page.locator(".pv-checklist li[data-state=now]");
+    assert.match(await now.innerText(), /Every table has joined/);
+    assert.match(await page.locator(".pv-next").innerText(), /Ask every team to open the page/);
+    assert.match(await page.locator("[data-host-progress]").innerText(), /R1 opens at \d\d:\d\d Moscow time, in \d+:\d\d/);
+
+    await page.check('input[data-host="joined"]');
+    assert.match(await page.locator(".pv-checklist li[data-state=now]").innerText(), /The game is played/);
+    assert.match(await page.locator(".pv-next").innerText(), /Wait for R1/);
+
+    await page.reload();
+    await page.click("button[data-action=host]");
+    assert.equal(await page.locator('input[data-host="joined"]').isChecked(), true, "the tick survives a reload");
+    assert.match(await page.locator(".pv-checklist li[data-state=now]").innerText(), /The game is played/);
+    await page.uncheck('input[data-host="joined"]');
+    assert.match(await page.locator(".pv-checklist li[data-state=now]").innerText(), /Every table has joined/);
   });
 });

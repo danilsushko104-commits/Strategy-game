@@ -592,3 +592,16 @@
 #one-market-first .pv-sync:is([data-sync-state="retry"], [data-sync-state="unconfirmed"]) { border-left-color: var(--pv-orange); }
 #one-market-first .pv-sync:is([data-sync-state="retry"], [data-sync-state="unconfirmed"]) .pv-button { display: inline-block; }
 #one-market-first .pv-sync[data-sync-state="ok"] { border-left-color: var(--pv-blue); }
+
+/* Facilitator checklist */
+#one-market-first .pv-checklist { margin-top: 16px; }
+#one-market-first .pv-checklist h3 { margin: 0 0 6px; }
+#one-market-first .pv-next { margin: 0 0 12px; }
+#one-market-first .pv-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+#one-market-first .pv-steps li { display: grid; grid-template-columns: 28px 1fr; gap: 8px; align-items: start; padding: 8px 10px; border-left: 4px solid var(--pv-line); }
+#one-market-first .pv-steps li[data-state="done"] { border-left-color: var(--pv-blue); }
+#one-market-first .pv-steps li[data-state="now"] { border-left-color: var(--pv-orange); background: var(--pv-white); }
+#one-market-first .pv-steps li[data-state="later"] { color: var(--pv-muted); }
+#one-market-first .pv-steps p { margin: 2px 0 6px; font-size: 14px; }
+#one-market-first .pv-step-mark { font-weight: 700; text-align: center; }
+#one-market-first .pv-check-line { display: flex; gap: 8px; align-items: center; font-weight: 700; }

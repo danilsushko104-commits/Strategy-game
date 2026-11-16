@@ -49,7 +49,11 @@ export function interval(room, start, end) {
 
 export function countdown(delta) {
   const seconds = Math.max(0, Math.ceil(delta / 1000));
-  return String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+  const pad = value => String(value).padStart(2, "0");
+  const hours = Math.floor(seconds / 3600);
+  const rest = seconds % 3600;
+  const minutes = pad(Math.floor(rest / 60)) + ":" + pad(rest % 60);
+  return hours ? hours + ":" + minutes : minutes;
 }
 
 export function textReport(record, boardOnly = false) {
