@@ -1,5 +1,6 @@
 import { CONFIG, MARKETS, ROUNDS, WORKSHEET, RUBRIC, BRIEF, BULLETINS, SINGAPORE } from './scenario.mjs';
 import { hash32 } from './hash.mjs';
+import { tuning, retestDelta } from './tuning.mjs';
 
 export const SCHEDULE = [
   [-20, 0, "SETUP", "Team assignments, Board brief and practice"],
@@ -23,8 +24,14 @@ export const PRICE = {
   verify: 2, narrow: 1, broaden: 2, diligence: 1, targeted: 1,
   fullOne: 3, fullTwo: 4
 };
+// Base price plus the market's own adjustment (see tuning.mjs). Never below zero.
+export function price(marketId, key) {
+  return Math.max(0, PRICE[key] + (tuning().markets[marketId]?.price?.[key] ?? 0));
+}
+
 const ROUTES = { pilot: "Pilot with local provider", alliance: "Contractual alliance", acquisition: "Prepare an acquisition", planning: "Preparation without a selected route" };
 export const OUTCOMES = {
+  pilot2: ["Conditional pilot with two cohorts", "Request approval for two cohorts subject to confirmed permissions, provider readiness for each channel and the named launch condition. Name what you would do if one cohort misses its threshold."],
   pilot: ["Conditional first pilot", "Request approval for one cohort subject to confirmed permissions, provider readiness and the named launch condition. Add a second cohort only if it survived the correction and the first cohort meets your threshold."],
   deal: ["Conditional acquisition work", "Request continued deal work against the named closing condition. Closing, permissions, operational readiness and a separate launch decision remain ahead."],
   retest: ["Fund a supervised test", "Request one mock cohort without live funds or public launch. Return to the Board with proof against your stated milestone."],
@@ -106,38 +113,38 @@ export function optionsFor(id, state, marketId) {
     case "R2":
       options = [
         option("desk", 0, "Keep the base dossier", "Use the market facts and first customer signal. Preserve credits for entry or the emergency."),
-        option("interview", PRICE.interview, "Buy an interview follow-up", "Get evidence about why this segment might switch. This measures stated preferences."),
-        option("prototype", PRICE.prototype, "Test the mock journey", "Get a result on how users interpret the quote, status or support screen. No money moves.")
+        option("interview", price(marketId, "interview"), "Buy an interview follow-up", "Get evidence about why this segment might switch. This measures stated preferences."),
+        option("prototype", price(marketId, "prototype"), "Test the mock journey", "Get a result on how users interpret the quote, status or support screen. No money moves.")
       ];
       break;
     case "R3":
       options = [
-        option("pilot", PRICE.pilot, ROUTES.pilot, "Scope one use case, in one city, with one cohort. The local provider handles any authorized activity after permission and readiness checks."),
-        option("alliance", PRICE.alliance, ROUTES.alliance, "Prepare a co-branded offer and define distribution and support responsibilities. In R5 you may add a second cohort if you can afford it."),
-        option("acquisition", PRICE.acquisition, ROUTES.acquisition, "Screen the target, plan diligence and integration. The deeper transaction check in R5 is needed for a deal mandate at the Board.")
+        option("pilot", price(marketId, "pilot"), ROUTES.pilot, "Scope one use case, in one city, with one cohort. The local provider handles any authorized activity after permission and readiness checks."),
+        option("alliance", price(marketId, "alliance"), ROUTES.alliance, "Prepare a co-branded offer and define distribution and support responsibilities. In R5 you may add a second cohort if you can afford it."),
+        option("acquisition", price(marketId, "acquisition"), ROUTES.acquisition, "Screen the target, plan diligence and integration. The deeper transaction check in R5 is needed for a deal mandate at the Board.")
       ];
       break;
     case "R4":
       options = [
         option("reserve", 0, "Keep a reserve", "Record a permission or contract dependency. Pay the standard rates if you later need to issue and test a correction."),
-        option("verify", PRICE.verify, "Verify readiness", "Buy a scoped finding and pre-agreed correction wording. An approved one-channel correction is free. A full correction and retest costs one credit less.")
+        option("verify", price(marketId, "verify"), "Verify readiness", "Buy a scoped finding and pre-agreed correction wording. An approved one-channel correction is free. A full correction and retest costs one credit less.")
       ];
       break;
     case "R5":
       options = [
         option("keep", 0, "Keep your proposition", "Keep the use case and one channel. Defend a claim the competitor still leaves open."),
-        option("narrow", PRICE.narrow, "Narrow and test the proposition", "Keep the R1 profile. Limit the corridor, subgroup or promise and unlock a five-person mock result. You may reuse the tested scope for a targeted correction."),
-        option("broaden", PRICE.broaden, "Add a second cohort and channel", "Reach a second group in the same city and segment. Full correction costs more when two channels are exposed.",
+        option("narrow", price(marketId, "narrow"), "Narrow and test the proposition", "Keep the R1 profile. Limit the corridor, subgroup or promise and unlock a five-person mock result. You may reuse the tested scope for a targeted correction."),
+        option("broaden", price(marketId, "broaden"), "Add a second cohort and channel", "Reach a second group in the same city and segment. Full correction costs more when two channels are exposed.",
           state.route === "alliance" ? "" : "Available on the alliance route."),
-        option("diligence", PRICE.diligence, "Investigate the deal’s main risk", "Get a target-specific finding and a closing condition. This qualifies you to request deal work once outreach has been corrected.",
+        option("diligence", price(marketId, "diligence"), "Investigate the deal’s main risk", "Get a target-specific finding and a closing condition. This qualifies you to request deal work once outreach has been corrected.",
           state.route === "acquisition" ? "" : "Available on the acquisition route.")
       ];
       break;
     case "R6":
       options = [
         option("hold", 0, "Hold outreach", "Publish a holding statement and document the incident. The next ask can fund preparation and a later review."),
-        option("targeted", state.verified ? 0 : PRICE.targeted, "Correct one channel", "Correct one channel and pause all uncorrected messages. Keep one cohort. Readiness verification or the narrow mock test lets you validate the correction in that cohort."),
-        option("full", (state.cohorts === 2 ? PRICE.fullTwo : PRICE.fullOne) - Number(state.verified),
+        option("targeted", state.verified ? 0 : price(marketId, "targeted"), "Correct one channel", "Correct one channel and pause all uncorrected messages. Keep one cohort. Readiness verification or the narrow mock test lets you validate the correction in that cohort."),
+        option("full", (state.cohorts === 2 ? price(marketId, "fullTwo") : price(marketId, "fullOne")) - Number(state.verified),
           "Correct every channel and retest", "Correct all planned channels and run a mock comprehension check with 20 people per cohort. Each cohort needs at least 16 correct responses. A prior prototype, preparation of approved wording or a narrowed test can improve the result.")
       ];
       break;
@@ -147,7 +154,12 @@ export function optionsFor(id, state, marketId) {
       const dealBlock = state.route !== "acquisition" ? "Requires the acquisition route." :
         !state.diligence ? "Requires the R5 deal-risk check." :
         state.incident === "hold" ? "Requires at least a targeted public correction in R6." : "";
+      const pilotTwoBlock = state.route !== "alliance" ? "Requires the alliance route." :
+        state.cohorts !== 2 ? "Requires two cohorts from the second-channel step." :
+        state.launchEvidence ? "" : "Requires evidence that users in both cohorts understood the corrected offer.";
       options = [
+        ...(tuning().askPilotTwo ? [option("pilot2", 0, "Request conditional approval for a pilot with two cohorts",
+          "The Board can approve both cohorts. Each cohort still depends on the stated launch conditions.", pilotTwoBlock)] : []),
         option("pilot", 0, "Request conditional approval for a pilot", "The Board can approve the next step. Live activity still depends on the stated launch conditions.", pilotBlock),
         option("deal", 0, "Request a conditional mandate for deal work", "Request deeper diligence or negotiation against a specific closing condition. A go-live decision follows separately.", dealBlock),
         option("retest", 0, "Request one revised mock test", "Use one cohort with no live funds. Return to the Board before seeking pilot approval.",
@@ -189,7 +201,7 @@ export function pendingFact(round, state, marketId) {
   }[round];
 }
 
-function responseResult(state, selection, profile) {
+function responseResult(state, selection, profile, marketId, record) {
   if (selection === "hold") return {
     incident: "hold", launchEvidence: false, cohorts: state.cohorts,
     result: "Outreach stopped. Preserve the evidence and propose a review date."
@@ -206,8 +218,12 @@ function responseResult(state, selection, profile) {
     };
   }
   const advantage = state.narrow ? 2 : Number(state.verified || state.research === "prototype");
-  const firstResult = state.narrow ? 18 : state.cohorts === 2 ? 16 + advantage : 15 + advantage;
-  const counts = state.cohorts === 2 ? [firstResult, 17] : [firstResult];
+  const shift = tuning().markets[marketId]?.testShift ?? 0;
+  const draw = cohort => retestDelta([record.room, record.team, "R6", cohort].join("|"));
+  const clamp = value => Math.min(20, Math.max(0, value));
+  const firstBase = state.narrow ? 18 : state.cohorts === 2 ? 16 + advantage : 15 + advantage;
+  const firstResult = clamp(firstBase + shift + draw(1));
+  const counts = state.cohorts === 2 ? [firstResult, clamp(17 + shift + draw(2))] : [firstResult];
   const launchEvidence = counts.every(count => count >= 16);
   return {
     incident: "full", launchEvidence, cohorts: state.cohorts,
@@ -217,7 +233,7 @@ function responseResult(state, selection, profile) {
   };
 }
 
-function applyChoice(state, round, selection, marketId) {
+function applyChoice(state, round, selection, marketId, record) {
   const market = MARKETS[marketId];
   const profile = market.profiles[state.profile];
   const next = {...state, credits: state.credits - selection.cost, result: null};
@@ -247,7 +263,7 @@ function applyChoice(state, round, selection, marketId) {
         broaden: "Two cohorts and two channels. A targeted correction retains one cohort. A full retest can keep both.", diligence: market.diligence}[selection.id];
       break;
     case "R6":
-      Object.assign(next, responseResult(state, selection.id, profile));
+      Object.assign(next, responseResult(state, selection.id, profile, marketId, record));
       break;
     case "R7":
       next.result = OUTCOMES[selection.id][1];
@@ -280,7 +296,7 @@ export function replay(record) {
     const round = ROUNDS[index];
     if (!round || event.round !== round.id) throw new Error("Decisions are out of order.");
     const chosen = resolveChoice(event, round, state, record.market);
-    state = applyChoice(state, round, chosen, record.market);
+    state = applyChoice(state, round, chosen, record.market, record);
     return {...event, label: chosen.label, cost: chosen.cost, credits: state.credits, result: state.result, state};
   });
   return {state, path};
@@ -443,6 +459,32 @@ export function scoreJury(submissions) {
 
 export function compareScores(a, b) {
   return b.total - a.total || b.oral - a.oral || b.uppsala - a.uppsala;
+}
+
+// The hidden game result, 0-100: what the Board can be asked for, how well the ask is supported by evidence
+// and how much budget was kept. It is built from the saved state, so it needs no extra storage.
+export function gameScore(record) {
+  const {state, path} = replay(record);
+  if (path.length !== ROUNDS.length) return null;
+  const table = tuning().scoring;
+  const ask = path.at(-1).choice;
+  const parts = [["Request to the Board · " + ask, table.ask[ask] ?? 0], ["Customer research · " + state.research, table.research[state.research] ?? 0]];
+  if (state.verified) parts.push(["Readiness check", table.verified]);
+  if (state.narrow) parts.push(["Narrowed proposition", table.narrow]);
+  const response = {hold: table.response.hold, targeted: state.launchEvidence ? table.response.targetedProven : table.response.targetedOpen,
+    full: state.launchEvidence ? table.response.fullPassed : table.response.fullFailed}[state.incident];
+  parts.push(["Emergency response · " + state.incident, response ?? 0]);
+  if (ask === "pilot" && state.cohorts === 2 && state.launchEvidence) parts.push(["Second cohort kept", table.secondCohort]);
+  if (ask === "deal" && state.incident === "full") parts.push(["Whole campaign corrected before the deal ask", table.dealFullCorrection]);
+  // Unspent credits only count when there is a real step to fund, so hoarding behind a deferral earns nothing.
+  if (["pilot", "pilot2", "deal"].includes(ask)) parts.push(["Reserve kept", Math.min(state.credits, table.creditCap) * table.credit]);
+  const total = Math.min(100, Math.max(0, parts.reduce((sum, [, points]) => sum + points, 0)));
+  return {total, parts: parts.map(([label, points]) => ({label, points}))};
+}
+
+// The final grade: expert score (0-100) and game score (0-100) in the configured proportion.
+export function finalScore(jury, game, share = tuning().gameShare) {
+  return jury * (1 - share) + game * share;
 }
 
 // Competition ranking: equal scores share a rank. Entries without a score have no rank.
