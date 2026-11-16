@@ -1028,7 +1028,8 @@ return { storageAvailable, getStored, putStored, teamKey, hostKey, SaveError, re
 
 // src/sync.mjs
 const __omf_sync = (() => {
-const { replay } = __omf_rules;
+const { ROUNDS } = __omf_scenario;
+const { replay, gameScore } = __omf_rules;
 const { hash53 } = __omf_hash;
 const { trueNow, clockStatus } = __omf_clock;
 const { readSynced, writeSynced } = __omf_storage;
@@ -1065,7 +1066,9 @@ function buildEvents(record) {
       id: record.room + ":" + record.team + ":" + seq + ":" + chain,
       room: record.room, team: record.team, market: record.market, session: record.session, seq,
       round: event.round, choice: event.choice, method: event.method, label: step.label, cost: step.cost, credits: step.credits,
-      clientTime: event.at, evidence: event.evidence, tradeoff: event.tradeoff, problem: event.problem ?? "", chain, content: record.content || ""
+      clientTime: event.at, evidence: event.evidence, tradeoff: event.tradeoff, problem: event.problem ?? "", chain, content: record.content || "",
+      // After the last decision the hidden game result is known; the sheet shows it next to the team.
+      game: seq === ROUNDS.length - 1 ? gameScore(record).total : ""
     };
   });
 }

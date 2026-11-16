@@ -1,4 +1,5 @@
-import { replay } from './rules.mjs';
+import { ROUNDS } from './scenario.mjs';
+import { replay, gameScore } from './rules.mjs';
 import { hash53 } from './hash.mjs';
 import { trueNow, clockStatus } from './clock.mjs';
 import { readSynced, writeSynced } from './storage.mjs';
@@ -36,7 +37,9 @@ export function buildEvents(record) {
       id: record.room + ":" + record.team + ":" + seq + ":" + chain,
       room: record.room, team: record.team, market: record.market, session: record.session, seq,
       round: event.round, choice: event.choice, method: event.method, label: step.label, cost: step.cost, credits: step.credits,
-      clientTime: event.at, evidence: event.evidence, tradeoff: event.tradeoff, problem: event.problem ?? "", chain, content: record.content || ""
+      clientTime: event.at, evidence: event.evidence, tradeoff: event.tradeoff, problem: event.problem ?? "", chain, content: record.content || "",
+      // After the last decision the hidden game result is known; the sheet shows it next to the team.
+      game: seq === ROUNDS.length - 1 ? gameScore(record).total : ""
     };
   });
 }
