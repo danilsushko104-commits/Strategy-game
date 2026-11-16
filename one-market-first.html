@@ -590,6 +590,13 @@
   #one-market-first .pv-budget strong { font-size: 27px; }
   #one-market-first .pv-budget .pv-mono { font-size: 9px; }
 }
+
+/* Backup indicator and recovery list */
+#one-market-first .pv-backup { margin: 10px 0 0; padding-left: 10px; border-left: 4px solid var(--pv-ink); font-size: 13px; line-height: 1.4; }
+#one-market-first .pv-backup[data-backup-state="warn"] { border-left-color: var(--pv-orange); }
+#one-market-first .pv-backup[data-backup-state="late"] { border-left-color: var(--pv-negative); color: var(--pv-negative); font-weight: 700; }
+#one-market-first .pv-recovery { margin: 12px 0; padding-left: 18px; }
+#one-market-first .pv-recovery li { margin: 0 0 10px; overflow-wrap: anywhere; }
 </style>
 
 <section id="one-market-first" lang="en" aria-label="Revolut — One Market First">
@@ -642,6 +649,37 @@
 <script>
 (async () => {
 "use strict";
+
+// src/hash.mjs
+const __omf_hash = (() => {
+// Small synchronous, non-cryptographic hashes. They detect accidental damage, version drift and
+// edits that were not re-hashed; they are not a defence against a determined cheater.
+
+// FNV-1a, 32 bit: a short fingerprint of the game content.
+function hash32(text) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index++) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+// cyrb53: 53 bits, used to chain decisions so that changing an earlier one changes every later link.
+function hash53(text, seed = 0) {
+  let h1 = 0xdeadbeef ^ seed;
+  let h2 = 0x41c6ce57 ^ seed;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    h1 = Math.imul(h1 ^ code, 2654435761);
+    h2 = Math.imul(h2 ^ code, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36).padStart(11, "0");
+}
+return { hash32, hash53 };
+})();
 
 // src/scenario.mjs
 const __omf_scenario = (() => {
@@ -947,7 +985,8 @@ return { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEE
 
 // src/rules.mjs
 const __omf_rules = (() => {
-const { CONFIG, MARKETS, ROUNDS, WORKSHEET, RUBRIC } = __omf_scenario;
+const { CONFIG, MARKETS, ROUNDS, WORKSHEET, RUBRIC, BRIEF, BULLETINS, SINGAPORE } = __omf_scenario;
+const { hash32 } = __omf_hash;
 const SCHEDULE = [
   [-20, 0, "SETUP", "Team assignments, Board brief and practice"],
   [0, 16, "R1", "Customer and CAGE"],
@@ -977,6 +1016,15 @@ const OUTCOMES = {
   retest: ["Fund a supervised test", "Request one mock cohort without live funds or public launch. Return to the Board with proof against your stated milestone."],
   defer: ["Fund preparation and defer", "Request a specific preparation step. Name the unresolved obstacle, evidence required and review date."]
 };
+
+// Fingerprint of everything a team reads or is charged for. Saves remember it, so a page that was
+// republished with different content can warn instead of silently showing other results.
+// Changes to the rule logic itself are covered by CONFIG.version.
+const CONTENT_ID = hash32(JSON.stringify([MARKETS, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, BRIEF, SINGAPORE, PRICE, SCHEDULE, OUTCOMES, CONFIG.budget]));
+
+function contentMismatch(record) {
+  return !!record?.content && record.content !== CONTENT_ID;
+}
 
 function permutations(items) {
   if (items.length === 1) return [items];
@@ -1318,7 +1366,7 @@ function validateRecord(record) {
       !Array.isArray(history) || history.length > ROUNDS.length) throw new Error("Invalid team or room record.");
   const clean = {
     game: CONFIG.game, version: CONFIG.version, mode, team, market, room,
-    session: cleanText(record.session), history: [], drafts: {},
+    session: cleanText(record.session), content: typeof record.content === "string" ? record.content.slice(0, 16) : "", history: [], drafts: {},
     notes: normalizeNotes(record.notes), bulletinB: mode === "practice" && record.bulletinB === true,
     brief: typeof record.brief === "string" ? record.brief.slice(0, CONFIG.maxNote * 3) : ""
   };
@@ -1366,7 +1414,7 @@ function scoreJury(submissions) {
 function compareScores(a, b) {
   return b.total - a.total || b.oral - a.oral || b.uppsala - a.uppsala;
 }
-return { SCHEDULE, TEAMS, PRICE, OUTCOMES, makeRoom, roomStart, marketForTable, phaseAt, initialProgress, optionsFor, pendingFact, isDraftComplete, replay, settleDeadlines, lockRound, canReadBulletinB, assertOpen, updateDraft, updateNote, updateBrief, validateRecord, scoreJury, compareScores };
+return { SCHEDULE, TEAMS, PRICE, OUTCOMES, CONTENT_ID, contentMismatch, makeRoom, roomStart, marketForTable, phaseAt, initialProgress, optionsFor, pendingFact, isDraftComplete, replay, settleDeadlines, lockRound, canReadBulletinB, assertOpen, updateDraft, updateNote, updateBrief, validateRecord, scoreJury, compareScores };
 })();
 
 // src/clock.mjs
@@ -1429,7 +1477,7 @@ return { trueNow, clockStatus, offsetFromResponse, syncClock, resetClock };
 // src/storage.mjs
 const __omf_storage = (() => {
 const { CONFIG } = __omf_scenario;
-const { TEAMS, roomStart, validateRecord } = __omf_rules;
+const { TEAMS, roomStart, validateRecord, CONTENT_ID } = __omf_rules;
 const prefix = CONFIG.game + ":" + CONFIG.version;
 const memory = new Map();
 let writable = true;
@@ -1473,16 +1521,196 @@ function hostKey(room) {
   return prefix + ":" + room + ":facilitator";
 }
 
+function backupKey(room, team) {
+  return prefix + ":" + room + ":backup:" + team;
+}
+
+const SNAPSHOTS = ["bak1", "bak2"];
+
+// A save that cannot be opened. The app offers recovery instead of a dead end.
+class SaveError extends Error {
+  constructor(message, {room, team} = {}) {
+    super(message);
+    this.name = "SaveError";
+    this.room = room;
+    this.team = team;
+  }
+}
+
+function parseSlot(raw, room, team) {
+  let parsed;
+  try { parsed = JSON.parse(raw); }
+  catch { throw new SaveError("The saved data is damaged and cannot be read.", {room, team}); }
+  try {
+    const record = validateRecord(parsed);
+    if (record.room !== room || record.team !== team) throw new Error("This saved record belongs to a different table.");
+    return record;
+  } catch (error) {
+    throw new SaveError(error.message || "The saved game could not be read.", {room, team});
+  }
+}
+
 function readSlot(room, team) {
   const raw = getStored(teamKey(room, team));
-  if (raw === null) return null;
-  const record = validateRecord(JSON.parse(raw));
-  if (record.room !== room || record.team !== team) throw new Error("This saved record belongs to a different table.");
-  return record;
+  return raw === null ? null : parseSlot(raw, room, team);
+}
+
+function historyLength(raw) {
+  try {
+    const length = JSON.parse(raw)?.history?.length;
+    return Number.isInteger(length) ? length : -1;
+  } catch {
+    return -1;
+  }
+}
+
+// Every time the list of locked decisions changes, the previous good save moves into a two-step ring.
+// Draft edits do not rotate the ring, so the snapshots stay one decision apart.
+function rotateSnapshots(key, previous) {
+  const [first, second] = SNAPSHOTS.map(slot => key + ":" + slot);
+  const older = getStored(first);
+  if (older !== null) {
+    putStored(second, older);
+    void mirrorPut(second, older);
+  }
+  putStored(first, previous);
+  void mirrorPut(first, previous);
 }
 
 function storeRecord(record) {
-  putStored(teamKey(record.room, record.team), JSON.stringify(record));
+  const key = teamKey(record.room, record.team);
+  const next = JSON.stringify(record);
+  const previous = getStored(key);
+  if (previous !== null && previous !== next) {
+    const before = historyLength(previous);
+    if (before >= 0 && before !== record.history.length) rotateSnapshots(key, previous);
+  }
+  putStored(key, next);
+  void mirrorPut(key, next);
+}
+
+function clearSlot(room, team) {
+  const key = teamKey(room, team);
+  for (const name of [key, ...SNAPSHOTS.map(slot => key + ":" + slot), backupKey(room, team)]) {
+    putStored(name, null);
+    void mirrorPut(name, null);
+  }
+}
+
+// ---- Second copy in IndexedDB -------------------------------------------------------------
+// Protects against failed or partial localStorage writes, quota errors and damaged values.
+// Browsers usually clear both stores together, so a downloaded JSON file remains the real backup.
+
+const mirrorState = {ok: null};
+let mirrorDatabase = null;
+
+function openMirror() {
+  return new Promise((resolve, reject) => {
+    if (!globalThis.indexedDB) return reject(new Error("IndexedDB is unavailable."));
+    const request = indexedDB.open(prefix, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("kv");
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error("IndexedDB is blocked."));
+  });
+}
+
+function database() {
+  mirrorDatabase ||= openMirror().catch(() => null);
+  return mirrorDatabase;
+}
+
+function transaction(db, mode, work) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("kv", mode);
+    const result = work(tx.objectStore("kv"));
+    tx.oncomplete = () => resolve(result?.result);
+    tx.onerror = tx.onabort = () => reject(tx.error);
+  });
+}
+
+async function mirrorPut(key, value) {
+  try {
+    const db = await database();
+    if (!db) { mirrorState.ok = false; return; }
+    await transaction(db, "readwrite", store => value === null ? store.delete(key) : store.put(value, key));
+    mirrorState.ok = true;
+  } catch {
+    mirrorState.ok = false;
+  }
+}
+
+async function mirrorGet(key) {
+  try {
+    const db = await database();
+    if (!db) return null;
+    return (await transaction(db, "readonly", store => store.get(key))) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function mirrorStatus() {
+  return mirrorState.ok;
+}
+
+// ---- Recovery -----------------------------------------------------------------------------
+
+// Readable copies of a table's save: the two snapshots and the IndexedDB mirror, best first.
+async function recoveryOptions(room, team) {
+  const key = teamKey(room, team);
+  const candidates = [
+    ...SNAPSHOTS.map(slot => ({source: "snapshot " + slot, raw: getStored(key + ":" + slot)})),
+    {source: "browser copy", raw: await mirrorGet(key)}
+  ];
+  const seen = new Set();
+  const options = [];
+  for (const {source, raw} of candidates) {
+    if (raw === null || seen.has(raw)) continue;
+    seen.add(raw);
+    try {
+      const record = parseSlot(raw, room, team);
+      options.push({source, record, rounds: record.history.length});
+    } catch { /* unreadable copy: not offered */ }
+  }
+  return options.sort((a, b) => b.rounds - a.rounds);
+}
+
+// ---- Persistence and backup bookkeeping ----------------------------------------------------
+
+const persistence = {state: "unknown"};
+
+async function requestPersistence() {
+  try {
+    if (!navigator.storage?.persist) persistence.state = "unsupported";
+    else if (await navigator.storage.persisted()) persistence.state = "granted";
+    else persistence.state = (await navigator.storage.persist()) ? "granted" : "denied";
+  } catch {
+    persistence.state = "unsupported";
+  }
+  return persistence.state;
+}
+
+function persistenceState() {
+  return persistence.state;
+}
+
+function readBackup(room, team) {
+  try {
+    const value = JSON.parse(getStored(backupKey(room, team)));
+    return Number.isInteger(value?.rounds) && Number.isFinite(value.at) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function markBackup(room, team, rounds, at) {
+  putStored(backupKey(room, team), JSON.stringify({rounds, at}));
+}
+
+// How far the last downloaded backup trails behind the locked decisions.
+function backupBehind(decisions, backup) {
+  return Math.max(0, decisions - (backup?.rounds ?? 0));
 }
 
 function activeTeam(value) {
@@ -1502,7 +1730,7 @@ function newId() {
 
 function newRecord(mode, room, team, market) {
   return validateRecord({
-    game: CONFIG.game, version: CONFIG.version, mode, room, team, market,
+    game: CONFIG.game, version: CONFIG.version, content: CONTENT_ID, mode, room, team, market,
     session: newId(), history: [], drafts: {}, notes: {}, brief: "", bulletinB: false
   });
 }
@@ -1514,7 +1742,7 @@ function withSaveLock(key, change) {
 function knownTable(value) {
   return value && TEAMS.includes(value.team) && (value.room === "PRACTICE" || roomStart(value.room) !== null);
 }
-return { storageAvailable, getStored, putStored, teamKey, hostKey, readSlot, storeRecord, activeTeam, newId, newRecord, withSaveLock, knownTable };
+return { storageAvailable, getStored, putStored, teamKey, hostKey, SaveError, readSlot, storeRecord, clearSlot, mirrorPut, mirrorGet, mirrorStatus, recoveryOptions, requestPersistence, persistenceState, readBackup, markBackup, backupBehind, activeTeam, newId, newRecord, withSaveLock, knownTable };
 })();
 
 // src/presentation.mjs
@@ -1855,8 +2083,8 @@ return { renderHost, hostClock, handleHostAction, updateHostField, importTeamFil
 // src/app.mjs
 await (async () => {
 const { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION } = __omf_scenario;
-const { TEAMS, SCHEDULE, OUTCOMES, makeRoom, marketForTable, roomStart, phaseAt, replay, optionsFor, pendingFact, settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord } = __omf_rules;
-const { storageAvailable, getStored, putStored, teamKey, readSlot, storeRecord, activeTeam, newId, newRecord, withSaveLock, knownTable } = __omf_storage;
+const { TEAMS, SCHEDULE, OUTCOMES, makeRoom, marketForTable, roomStart, phaseAt, replay, optionsFor, pendingFact, settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord, contentMismatch } = __omf_rules;
+const { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot, activeTeam, newId, newRecord, withSaveLock, knownTable, SaveError, recoveryOptions, requestPersistence, persistenceState, readBackup, markBackup, backupBehind } = __omf_storage;
 const { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename } = __omf_presentation;
 const { renderHost, handleHostAction, updateHostField, importTeamFile, hostClock } = __omf_host;
 const { trueNow, clockStatus, syncClock } = __omf_clock;
@@ -1864,7 +2092,7 @@ const root = document.querySelector("#one-market-first");
 const ui = Object.fromEntries([...root.querySelectorAll("[data-ui]")].map(element => [element.dataset.ui, element]));
 const view = {
   page: "home", entryMode: "live", room: "", team: 1, market: "indonesia", record: null,
-  pageKey: "", practiceReview: null, notice: "", readingFor: "team", busy: false, writes: Promise.resolve()
+  pageKey: "", recovery: null, practiceReview: null, notice: "", readingFor: "team", busy: false, writes: Promise.resolve()
 };
 const marketList = Object.entries(MARKETS);
 const scheduledRoom = makeRoom(Date.UTC(2026, 0, 1, 15, 30), 0, "000");
@@ -2081,7 +2309,8 @@ function roundScreen(round, state, record, phase, lastEvent) {
     const note = lastEvent.method === "default" ? "Default recorded" : "Decision locked";
     return stage(title, label, `<div class="pv-record"><p class="pv-mono">${note}</p><h3>${esc(lastEvent.label)}</h3>
         <p>${esc(lastEvent.result)}</p><p>${lastEvent.cost} spent · ${lastEvent.credits} remaining</p></div>
-      ${round.id === "R4" ? '<div class="pv-panel pv-checkpoint"><strong>Save your checkpoint before the break.</strong><div class="pv-file-actions">' + button("Download checkpoint JSON", "export-json") + "</div></div>" : ""}
+      ${record.mode === "live" ? '<div class="pv-panel pv-checkpoint"><strong>' + (round.id === "R4" ? "Save your checkpoint before the break." : "Save a backup copy.") + "</strong>" + backupLine(record) +
+        '<div class="pv-file-actions">' + button("Download backup JSON", "export-json") + "</div></div>" : ""}
       ${disclosure("Team worksheet", worksheet(round, record), true)}
       <div class="pv-commit">${next}</div>`, "review");
   }
@@ -2148,6 +2377,7 @@ function renderTeam(now) {
     <div class="pv-layout"><div>${body}</div><aside class="pv-sidebar">
       <section class="pv-sidebar-card"><h3>Decision journal</h3>${logList(path)}
         <div class="pv-file-actions pv-actions">${button("Journal TXT", "export-txt")}${button("Save JSON", "export-json")}</div>
+        ${backupLine(record)}
       </section>
       <section class="pv-sidebar-card"><h3>Team materials</h3>
         ${disclosure("Market dossier", marketDossier(market, state.profile))}
@@ -2181,7 +2411,7 @@ function render(focus = "") {
   const field = element?.dataset;
   const selection = [element?.selectionStart, element?.selectionEnd];
   ui.home.hidden = view.page === "home";
-  ui.screen.innerHTML = view.page === "team" ? renderTeam(now) : view.page === "host" ? renderHost(now) : homeScreen();
+  ui.screen.innerHTML = view.page === "team" ? renderTeam(now) : view.page === "host" ? renderHost(now) : view.page === "recover" ? recoveryScreen() : homeScreen();
   view.pageKey = view.page === "team" ? teamKeyForView(now) : "";
   renderNotice();
   updateClock(now);
@@ -2193,6 +2423,64 @@ function render(focus = "") {
     const target = [...root.querySelectorAll("textarea[data-note]")].find(item => item.dataset.round === field.round && item.dataset.field === field.field);
     target?.focus({preventScroll: true});
     target?.setSelectionRange(...selection);
+  }
+}
+
+function recoveryScreen() {
+  const {message, options, room, team} = view.recovery;
+  const list = options.length ? '<ul class="pv-recovery">' + options.map((option, index) =>
+    "<li><strong>" + esc(option.source) + "</strong> · " + MARKETS[option.record.market].name + " · " +
+    (option.rounds ? "decisions locked through " + ROUNDS[option.rounds - 1].id : "no decisions locked yet") + " " +
+    button("Restore this copy", "recover-pick", "", 'data-index="' + index + '"') + "</li>").join("") + "</ul>" :
+    "<p>No readable copy was found in this browser.</p>";
+  return stage("This saved game could not be opened", "Table " + team + " · " + (room === "PRACTICE" ? "Practice" : room),
+    "<p>" + esc(message) + "</p><p>Restore the newest readable copy below, or the JSON file you downloaded. The damaged save stays untouched until you choose.</p>" + list +
+    '<div class="pv-file-actions pv-actions">' + button("Restore JSON", "import", "primary", 'data-purpose="team"') + button("Back to home", "home") + "</div>", "event");
+}
+
+async function showRecovery(error) {
+  const options = await recoveryOptions(error.room, error.team);
+  view.page = "recover";
+  view.record = null;
+  view.practiceReview = null;
+  view.recovery = {message: error.message, options, room: error.room, team: error.team};
+  announce("");
+  render("#omf-stage-title");
+}
+
+function fail(error) {
+  if (error instanceof SaveError) void showRecovery(error);
+  else announce(error.message || "The action could not be completed.", "warning");
+}
+
+// How current the downloaded backup is, in words and as a state for colouring.
+function backupSummary(record) {
+  const backup = readBackup(record.room, record.team);
+  const decisions = record.history.length;
+  const behind = backupBehind(decisions, backup);
+  const state = behind === 0 ? "ok" : behind === 1 ? "warn" : "late";
+  const minutes = backup ? Math.max(0, Math.round((trueNow() - backup.at) / 60_000)) : 0;
+  const last = backup ? (backup.rounds ? ROUNDS[backup.rounds - 1].id : "setup") + ", " + (minutes < 1 ? "just now" : minutes + " min ago") : "";
+  const saved = !decisions ? "Nothing to back up yet." :
+    !backup ? "No backup file yet: " + decisions + (decisions === 1 ? " decision exists" : " decisions exist") + " only in this browser." :
+    behind ? "The backup is " + behind + (behind === 1 ? " decision" : " decisions") + " behind (last: after " + last + ")." :
+    "The backup is current (after " + last + ").";
+  const protection = {granted: " Browser storage is protected.", denied: " The browser may clear this page’s data, so keep the JSON file."}[persistenceState()] || "";
+  return {state, text: saved + protection};
+}
+
+function backupLine(record) {
+  if (record.mode !== "live") return "";
+  const {state, text} = backupSummary(record);
+  return '<p class="pv-backup" data-backup-state="' + state + '"><span data-backup-text>' + esc(text) + "</span></p>";
+}
+
+function refreshBackup() {
+  if (view.page !== "team" || !view.record || view.record.mode !== "live") return;
+  const {state, text} = backupSummary(view.record);
+  for (const element of root.querySelectorAll("[data-backup-state]")) {
+    element.dataset.backupState = state;
+    element.querySelector("[data-backup-text]").textContent = text;
   }
 }
 
@@ -2218,22 +2506,30 @@ function showTeam(record, message = "") {
   view.practiceReview = null;
   view.team = record.team;
   activeTeam({room: record.room, team: record.team});
-  announce(message);
+  const stale = contentMismatch(record) ? " This save was made with a different version of the game content, so the text and results shown here may differ from what the team saw." : "";
+  announce((message + stale).trim(), stale ? "warning" : "info");
   render("#omf-stage-title");
+  void requestPersistence().then(refreshBackup);
 }
 
 async function join() {
   const room = view.entryMode === "live" ? view.room.trim().toUpperCase() : "PRACTICE";
   if (view.entryMode === "live" && roomStart(room) === null) throw new Error("Enter the room code shown by the facilitator.");
   const market = view.entryMode === "live" ? marketForTable(room, view.team) : view.market;
-  const record = await withSaveLock(teamKey(room, view.team), () => {
-    let record = readSlot(room, view.team);
-    if (record && record.market !== market) throw new Error("This practice table has a saved market. Open it and reset practice, or choose another table.");
-    record = record || newRecord(view.entryMode, room, view.team, market);
-    record = settleDeadlines(record, trueNow());
-    storeRecord(record);
-    return record;
-  });
+  let record;
+  try {
+    record = await withSaveLock(teamKey(room, view.team), () => {
+      let record = readSlot(room, view.team);
+      if (record && record.market !== market) throw new Error("This practice table has a saved market. Open it and reset practice, or choose another table.");
+      record = record || newRecord(view.entryMode, room, view.team, market);
+      record = settleDeadlines(record, trueNow());
+      storeRecord(record);
+      return record;
+    });
+  } catch (error) {
+    if (error instanceof SaveError) return showRecovery(error);
+    throw error;
+  }
   showTeam(record);
 }
 
@@ -2274,7 +2570,7 @@ function capture(element) {
   if (draft) change = (record, now) => updateDraft(record, round, draft, value, now);
   else if (note !== undefined) change = (record, now) => updateNote(record, round, field, value, now);
   else if (brief !== undefined) change = (record, now) => updateBrief(record, value, now);
-  if (change) void saveChange(change).then(updateChoiceHint).catch(error => announce(error.message, "warning"));
+  if (change) void saveChange(change).then(updateChoiceHint).catch(fail);
 }
 
 async function submitRound(round, useDefault = false) {
@@ -2290,26 +2586,32 @@ async function restoreTeam(file) {
   let parsed;
   try { parsed = JSON.parse(await file.text()); }
   catch { throw new Error("Choose a JSON file exported by the game."); }
-  const record = validateRecord(parsed);
+  await restoreRecord(validateRecord(parsed), "Game restored from JSON.");
+}
+
+async function restoreRecord(record, message, confirm = true) {
   const key = teamKey(record.room, record.team);
   await view.writes;
   const before = getStored(key);
-  if (before !== null && !await ask("Replace a saved game?", "Restore table " + record.team + " for " + MARKETS[record.market].name + " from this JSON file?", "Restore")) return;
+  if (confirm && before !== null && !await ask("Replace a saved game?", "Restore table " + record.team + " for " + MARKETS[record.market].name + " from this JSON file?", "Restore")) return;
   const next = await withSaveLock(key, () => {
     if (getStored(key) !== before) throw new Error("The save changed. Pick the file again.");
     const restored = settleDeadlines({...record, session: newId()}, trueNow());
     storeRecord(restored);
     return restored;
   });
-  showTeam(next, "Game restored from JSON.");
+  showTeam(next, message);
 }
 
 async function download(format) {
   await saveChange(record => record);
   const record = view.record;
   if (!record) return;
-  if (format === "json") saveFile(teamFilename(record, "json", "save"), JSON.stringify(record, null, 2), "application/json");
-  else saveFile(teamFilename(record, "txt", format === "board" ? "board-brief" : "journal"), textReport(record, format === "board"), "text/plain;charset=utf-8");
+  if (format === "json") {
+    saveFile(teamFilename(record, "json", "save"), JSON.stringify(record, null, 2), "application/json");
+    markBackup(record.room, record.team, record.history.length, trueNow());
+    refreshBackup();
+  } else saveFile(teamFilename(record, "txt", format === "board" ? "board-brief" : "journal"), textReport(record, format === "board"), "text/plain;charset=utf-8");
 }
 
 function home() {
@@ -2320,6 +2622,7 @@ function home() {
   }
   view.page = "home";
   view.record = null;
+  view.recovery = null;
   view.practiceReview = null;
   activeTeam(null);
   announce("");
@@ -2330,7 +2633,7 @@ async function run(action) {
   if (view.busy) return;
   view.busy = true;
   try { await action(); }
-  catch (error) { announce(error.message || "The action could not be completed.", "warning"); }
+  catch (error) { fail(error); }
   finally { view.busy = false; }
 }
 
@@ -2351,6 +2654,10 @@ const controls = {
     render("#omf-stage-title");
   },
   "practice-default": () => submitRound(ROUNDS[view.record.history.length].id, true),
+  "recover-pick": target => {
+    const option = view.recovery?.options[Number(target.dataset.index)];
+    if (option) return restoreRecord(option.record, "Restored the " + option.source + ".", false);
+  },
   "next-practice": () => { view.practiceReview = null; render("#omf-stage-title"); },
   "export-json": () => download("json"),
   "export-txt": () => download("txt"),
@@ -2361,7 +2668,7 @@ const controls = {
     await view.writes;
     await withSaveLock(teamKey(record.room, record.team), () => {
       if (readSlot(record.room, record.team)?.session !== record.session) throw new Error("The practice save has changed.");
-      putStored(teamKey(record.room, record.team), null);
+      clearSlot(record.room, record.team);
     });
     home();
   }
@@ -2435,8 +2742,13 @@ window.addEventListener("storage", event => {
 });
 
 let previousHostTick = 0;
+let previousBackupTick = 0;
 setInterval(() => {
-  if (view.page === "team") void syncTeam();
+  if (view.page === "team") {
+    void syncTeam();
+    const now = trueNow();
+    if (now - previousBackupTick > 15_000) { refreshBackup(); previousBackupTick = now; }
+  }
   if (view.page === "host") {
     const now = trueNow();
     if (now - previousHostTick > 350) { updateClock(now); previousHostTick = now; }
@@ -2464,7 +2776,8 @@ if (knownTable(last)) {
   } catch (error) {
     view.page = "home";
     view.record = null;
-    announce(error.message, "warning");
+    if (error instanceof SaveError) await showRecovery(error);
+    else announce(error.message, "warning");
   }
 }
 render();

@@ -578,3 +578,10 @@
   #one-market-first .pv-budget strong { font-size: 27px; }
   #one-market-first .pv-budget .pv-mono { font-size: 9px; }
 }
+
+/* Backup indicator and recovery list */
+#one-market-first .pv-backup { margin: 10px 0 0; padding-left: 10px; border-left: 4px solid var(--pv-ink); font-size: 13px; line-height: 1.4; }
+#one-market-first .pv-backup[data-backup-state="warn"] { border-left-color: var(--pv-orange); }
+#one-market-first .pv-backup[data-backup-state="late"] { border-left-color: var(--pv-negative); color: var(--pv-negative); font-weight: 700; }
+#one-market-first .pv-recovery { margin: 12px 0; padding-left: 18px; }
+#one-market-first .pv-recovery li { margin: 0 0 10px; overflow-wrap: anywhere; }

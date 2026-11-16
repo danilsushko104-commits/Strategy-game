@@ -1,4 +1,5 @@
-import { CONFIG, MARKETS, ROUNDS, WORKSHEET, RUBRIC } from './scenario.mjs';
+import { CONFIG, MARKETS, ROUNDS, WORKSHEET, RUBRIC, BRIEF, BULLETINS, SINGAPORE } from './scenario.mjs';
+import { hash32 } from './hash.mjs';
 
 export const SCHEDULE = [
   [-20, 0, "SETUP", "Team assignments, Board brief and practice"],
@@ -29,6 +30,15 @@ export const OUTCOMES = {
   retest: ["Fund a supervised test", "Request one mock cohort without live funds or public launch. Return to the Board with proof against your stated milestone."],
   defer: ["Fund preparation and defer", "Request a specific preparation step. Name the unresolved obstacle, evidence required and review date."]
 };
+
+// Fingerprint of everything a team reads or is charged for. Saves remember it, so a page that was
+// republished with different content can warn instead of silently showing other results.
+// Changes to the rule logic itself are covered by CONFIG.version.
+export const CONTENT_ID = hash32(JSON.stringify([MARKETS, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, BRIEF, SINGAPORE, PRICE, SCHEDULE, OUTCOMES, CONFIG.budget]));
+
+export function contentMismatch(record) {
+  return !!record?.content && record.content !== CONTENT_ID;
+}
 
 function permutations(items) {
   if (items.length === 1) return [items];
@@ -370,7 +380,7 @@ export function validateRecord(record) {
       !Array.isArray(history) || history.length > ROUNDS.length) throw new Error("Invalid team or room record.");
   const clean = {
     game: CONFIG.game, version: CONFIG.version, mode, team, market, room,
-    session: cleanText(record.session), history: [], drafts: {},
+    session: cleanText(record.session), content: typeof record.content === "string" ? record.content.slice(0, 16) : "", history: [], drafts: {},
     notes: normalizeNotes(record.notes), bulletinB: mode === "practice" && record.bulletinB === true,
     brief: typeof record.brief === "string" ? record.brief.slice(0, CONFIG.maxNote * 3) : ""
   };

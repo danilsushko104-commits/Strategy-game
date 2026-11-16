@@ -7,7 +7,7 @@ const read = path => readFile(fromRoot(path), "utf8");
 export const OUTPUT_HTML = "one-market-first.html";
 export const OUTPUT_FRAGMENT = "one-market-first-t123.txt";
 // Dependency order: a module may only import from modules listed before it.
-export const MODULES = ["scenario", "rules", "clock", "storage", "presentation", "host", "app"];
+export const MODULES = ["hash", "scenario", "rules", "clock", "storage", "presentation", "host", "app"];
 const ENTRY = "app";
 
 const IMPORT = /^import\s*\{([^}]*)\}\s*from\s*['"]\.\/(\w+)\.mjs['"];?[ \t]*\n/gm;
