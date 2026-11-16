@@ -1,0 +1,1140 @@
+<script>
+const revolutOneMarketFirstDependencies = (() => {
+"use strict";
+
+// src/scenario.mjs
+const CONFIG = {
+  game: "revolut-one-market-first",
+  version: "v2",
+  budget: 9,
+  maxNote: 1800,
+  maxImportBytes: 512 * 1024
+};
+
+const SOURCES = {
+  revolut: ["Revolut Singapore · Account availability", "https://help.revolut.com/en-SG/help/profile-and-plan/profile-plan/verifying-identity/what-countries-are-supported/"],
+  transfers: ["Revolut Singapore · International transfers", "https://help.revolut.com/en-SG/help/transfers/outbound-transfers/how-to-send-money-to-another-bank/how-do-i-send-money-to-a-bank-account/"],
+  mexico: ["Revolut · Mexico banking launch", "https://www.revolut.com/news/revolut_launches_full_banking_operations_in_mexico_accelerating_global_expansion/"],
+  argentina: ["Revolut · Argentina acquisition approval", "https://www.revolut.com/en-US/news/revolut_receives_central_bank_approval_for_the_acquisition_of_banco_cetelem_in_argentina/"],
+  indicators: ["HKTDC · ASEAN 2024 indicators", "https://research.hktdc.com/en/article/Mzk5MzcxNjE"],
+  paynow: ["Association of Banks in Singapore · PayNow", "https://www.abs.org.sg/e-payments/pay-now"],
+  qris: ["Bank Indonesia · QRIS and provider approval", "https://www.bi.go.id/en/fungsi-utama/sistem-pembayaran/ritel/kanal-layanan/qris/default.aspx"],
+  qrph: ["Bangko Sentral ng Pilipinas · QR Ph and InstaPay", "https://www.bsp.gov.ph/Media_and_Research/Primers%20Faqs/QR_Ph_P2M_FAQs.pdf"],
+  bot: ["Bank of Thailand · Cross-border links", "https://www.bot.or.th/en/financial-innovation/digital-finance/digital-payment/cross-border-payment.html"],
+  napas: ["NAPAS · FastFund 247 with VietQR", "https://en.napas.com.vn/napas-fastfund-247-with-vietqr-code-service"],
+  cage: ["Pankaj Ghemawat · CAGE", "https://pubmed.ncbi.nlm.nih.gov/11550630/"],
+  uppsala: ["Johanson and Vahlne · Uppsala model", "https://doi.org/10.1057/JIBS.2009.24"]
+};
+
+const SINGAPORE = [
+  ["Working context", "The regional project team works in English. Its experience is in a compact city-state using SGD."],
+  ["Payment context", "PayNow lets customers of participating Singapore providers send SGD within Singapore through FAST. Revolut’s Singapore app supports international bank transfers. A local scheme or partner still has to cover the destination and the exact use case."],
+  ["Economic context", "2024 GDP per capita was about US$90,700. It provides market context. Use evidence about the chosen customer and current alternatives before making a pricing claim."]
+];
+
+const wise = ["Wise Business · International payments", "Compare the proof of payment, the receive amount and the payer’s ability to make the proposed payment.", "https://wise.com/sg/business/send-payments/"];
+const dbs = ["DBS business telegraphic transfers", "Compare the bank transfer journey, the payment reference and the ability to track receipt.", "https://www.dbs.com.sg/sme/day-to-day/payments/cross-border-fund-transfers/telegraphic-transfers"];
+
+const MARKETS = {
+  indonesia: {
+    name: "Indonesia", city: "Greater Jakarta", currency: "IDR", code: "ID",
+    facts: [
+      ["Working context", "Use Bahasa Indonesia for the local prototype and support. Jakarta is one hour behind Singapore. Extending beyond the pilot city adds new distribution and support needs across an archipelago."],
+      ["Payment context", "QRIS is Bank Indonesia’s interoperable QR standard. QRIS payment service providers need Bank Indonesia approval. Check whether the exact cross-border use case and provider are supported."],
+      ["Economic context", "2024 GDP per capita was about US$4,800. Test the value of the projected fee or convenience gain with the actual user."]
+    ],
+    sources: ["qris", "bot", "indicators"],
+    candidates: {
+      pilot: ["Archipelago Pay Services", "It will scope one Jakarta-area use case with one cohort. The agreement has to identify the permitted activity and the support handoff."],
+      alliance: ["Nusantara Connect", "The candidate can introduce travel and merchant distribution partners. It wants joint approval of the public offer and a separate agreement for each distribution channel."],
+      acquisition: ["Jakarta Transfer Works", "Its local team understands transfer operations. A vendor contract is material to the first offer. The change-of-control clause needs checking."]
+    },
+    diligence: "The vendor confirms that the contract requires written consent on a change of control. Make that consent a closing condition and name a replacement vendor if it is refused.",
+    profiles: {
+      A: {
+        name: "Frequent regional travellers", journey: "A Jakarta resident spending in Singapore wants to know the final IDR cost and where the proposed payment method works.",
+        channel: "An employer travel programme or a travel community in Greater Jakarta.",
+        alternatives: [
+          ["Mandiri Debit Multicurrency", "A card linked to an eligible foreign-currency account. Compare coverage and cost disclosure for a trip to Singapore.", "https://www.bankmandiri.co.id/en/web/guest/mandiri-debit"],
+          ["BCA Poket Valas", "A foreign-currency pocket linked to an eligible BCA card. Compare setup, supported currencies and the point at which the final cost is shown.", "https://www.bca.co.id/en/Individu/layanan/e-banking/mybca/-/media/Files/Individu/layanan/e-banking/mybca/poket-valas/IDS-0305B-C-2025-EN"]
+        ],
+        signal: "Exploratory interviews suggest users care about being able to pay on the trip at least as much as the displayed exchange rate.",
+        interview: "Five of eight interviewees said a clearer rate would not be enough to switch until the payment method worked at the merchants they visited.",
+        prototype: "Six of eight could tell where the proposed method was supported when shown a location list. The quote alone did not answer that question.",
+        competitor: "A competing payment app publishes a coverage list for one regional travel route. A simple map will no longer be a distinctive promise.",
+        narrow: "Limit the offer to one Jakarta-to-Singapore journey and make coverage explicit. In a five-person mock screen, four could identify the supported payment method and where it would work.",
+        incident: "Travellers ask whether every QR code in Singapore will work. A valid correction names the supported provider and payment method and describes the test’s limit.",
+        review: "Check who authorizes the list of supported providers and where the scope limitation appears."
+      },
+      B: {
+        name: "Freelancers paid by Singapore clients", journey: "A Jakarta freelancer receiving payment from a Singapore client wants a visible IDR amount and proof that the payment arrived. Establish who would use Revolut and verify that the payment purpose is eligible.",
+        channel: "A freelancer marketplace or local professional community, with a way to reach the payer in Singapore.",
+        alternatives: [wise, dbs],
+        signal: "Freelancers ask for a receipt they can share with the payer and a dependable indication of receipt.",
+        interview: "Six of eight interviewees wanted proof usable by both parties. A lower price alone missed their need to reconcile the payment.",
+        prototype: "Six of eight distinguished ‘sent’ from ‘received’ only when the mock journey showed a separate receipt.",
+        competitor: "A competing transfer app adds a shareable receipt. The team has to explain what its receipt or status does better.",
+        narrow: "Focus on one SGD-to-IDR payment purpose and a receipt both parties can read. Four of five mock users could tell who had received money and which amount was confirmed.",
+        incident: "Freelancers ask whether a ‘sent’ message guarantees that IDR has arrived. A valid correction distinguishes the statuses and the evidence available at each.",
+        review: "Check the meanings of ‘sent’ and ‘received’ and the details the provider lets both parties see."
+      }
+    }
+  },
+  philippines: {
+    name: "Philippines", city: "Metro Manila", currency: "PHP", code: "PH",
+    facts: [
+      ["Working context", "English and Filipino may both matter for customer communication. Metro Manila and Singapore share a time zone. Distribution beyond the starter city requires a different plan across the islands."],
+      ["Payment context", "The BSP documents QR Ph and InstaPay for local payments through participating providers. The domestic payout step and the cross-border transfer corridor require separate checks."],
+      ["Economic context", "2024 GDP per capita was about US$4,100. Compare the cost and convenience of the actual sender and recipient journey."]
+    ],
+    sources: ["qrph", "indicators"],
+    candidates: {
+      pilot: ["Harbor Transfer Services", "It will scope one Metro Manila cohort. Specify where the customer is supported and which provider handles the regulated activity."],
+      alliance: ["Bayan Corridor Network", "It can recruit through community partners and requests a say in who handles complaints. Contract terms will determine access and responsibility."],
+      acquisition: ["Pacific Family Transfers", "It brings experienced remittance staff. Its access to one Singapore distribution channel depends on an external contract."]
+    },
+    diligence: "The distributor may end the agreement after a change of control. Ask for written continuity or prove that the launch can reach the same households through a replacement channel.",
+    profiles: {
+      A: {
+        name: "Families receiving support from Singapore", journey: "A household wants to see how much PHP will arrive and when it is usable. Decide whether the existing Singapore sender uses Revolut, what changes for the Manila recipient and how that establishes a local business.",
+        channel: "One Metro Manila community for recipients, plus a plan to reach their senders through a worker or employer group in Singapore.",
+        alternatives: [
+          ["Wise · Singapore to the Philippines", "A cross-border option for the Singapore sender. Compare the receive amount, confirmation and which payout methods are supported.", "https://wise.com/sg/send-money/to/philippines"],
+          ["GCash remittance partners", "A pathway to a GCash wallet for recipients. Compare the sender channel, support handoff and proof of receipt.", "https://gcash.com/quick-guide-living-abroad/singapore"]
+        ],
+        signal: "Households ask for the final amount in PHP and a contact when the deposit differs.",
+        interview: "Six of eight households wanted the recipient to be able to see the credited amount as well as the sender.",
+        prototype: "Seven of eight correctly read the final PHP amount when it was shown separately from the FX rate.",
+        competitor: "A competing wallet partner adds a PHP-received estimate before confirmation. A single visible quote is becoming standard for this use case.",
+        narrow: "Focus on one SGD-to-PHP payout method and show the recipient what was credited. Four of five mock users distinguished an estimate from a credited amount.",
+        incident: "Families ask whether each recipient will get the exact PHP amount shown in the screenshot. A valid correction distinguishes a conditional estimate from the final credited amount.",
+        review: "Check how the quoted amount and wallet payout appear to both parties and who answers recipient complaints."
+      },
+      B: {
+        name: "Outbound travellers and students", journey: "A Metro Manila resident travelling to Singapore wants predictable currency spending and help if a payment is declined.",
+        channel: "A local university mobility office or an outbound travel community.",
+        alternatives: [
+          ["GCash Card", "A linked card for use where Visa is accepted, including abroad. Compare onboarding and how spending and declines are shown.", "https://help.gcash.com/hc/en-us/articles/21907534783769-GCash-Card-FAQs"],
+          ["Maya Card", "A card for eligible Visa or Mastercard payments locally and abroad. Compare the FX journey and the help available on a trip.", "https://www.maya.ph/pay-maya-card"]
+        ],
+        signal: "Travellers ask what happens if a Singapore payment is declined and which support channel will help.",
+        interview: "Five of eight would try a second travel product only if they understood what to do after a decline abroad.",
+        prototype: "Six of eight found help faster with a visible travel support control. This measured navigation in a mock journey.",
+        competitor: "A competing issuer adds travel-payment status and help in one screen. The team has to find a more specific advantage.",
+        narrow: "Offer one Singapore spending journey for exchange students, with a clear response to rejected payments. Four of five mock users found the next action.",
+        incident: "Students ask whether all payments abroad work instantly and without FX charges. A valid correction states the supported journey, the fee basis and what to do after a decline.",
+        review: "Check the conditions for card acceptance, the FX wording and which party handles declined payments."
+      }
+    }
+  },
+  thailand: {
+    name: "Thailand", city: "Bangkok", currency: "THB", code: "TH",
+    facts: [
+      ["Working context", "Begin with Thai-language customer communications. Bangkok is one hour behind Singapore."],
+      ["Payment context", "The Bank of Thailand documents PromptPay–PayNow for transfers among participating providers and a separate Thai–Singapore QR payment link for merchants and travellers."],
+      ["Economic context", "2024 GDP per capita was about US$7,500. Existing transfer and travel products give teams a concrete benchmark to test."]
+    ],
+    sources: ["bot", "indicators"],
+    candidates: {
+      pilot: ["Lotus Payment Services", "It offers one test in Bangkok within an agreed service scope. Confirm the eligible receiving institution or payment acceptance for the planned journey."],
+      alliance: ["Siam Route Finance", "It can open travel and education distribution channels, subject to signed terms and a joint review of co-branding."],
+      acquisition: ["Siam FX Connect", "It brings a regional travel-payments team and historical customer data. System migration effort remains unverified."]
+    },
+    diligence: "The technical review finds that historical transaction IDs do not match Revolut’s mock records. Require a sample reconciliation and a migration exit criterion before closing.",
+    profiles: {
+      A: {
+        name: "Frequent outbound travellers", journey: "A Bangkok traveller visits Singapore and other regional markets and wants to compare the full THB cost before paying.",
+        channel: "A travel platform, employer travel community or university mobility programme.",
+        alternatives: [
+          ["SCB PLANET", "A prepaid multi-currency travel card. Compare how the user loads currencies and sees the final trip cost.", "https://www.scb.co.th/en/personal-banking/cards/prepaid-cards/planet-scb-card"],
+          ["KBank YouTrip", "A prepaid multi-currency card listed by Kasikornbank. Compare spend coverage, the displayed quote and support.", "https://www.kasikornbank.com/en/rate/fee/feePDF/servicingfees-en-01012026.pdf"]
+        ],
+        signal: "Frequent travellers already carry travel cards and are reluctant to set up another one.",
+        interview: "Five of eight would consider switching for a material, visible improvement on a trip their current card already covers.",
+        prototype: "Seven of eight could compare the mock quote when the final THB cost and the foreign-currency amount were shown together.",
+        competitor: "A travel-card provider adds an all-in FX comparison for one regional route.",
+        narrow: "Focus on repeat Bangkok-to-Singapore travellers and one pre-payment cost comparison. Four of five mock users correctly compared the total THB cost.",
+        incident: "Travellers ask if the published ‘zero fees’ covers every conversion. A valid correction specifies what the quote includes and where separate charges can arise.",
+        review: "Check where the all-in quote applies and how the team flags separate charges."
+      },
+      B: {
+        name: "Families paying regular expenses in Singapore", journey: "A Bangkok household sends funds to a family member in Singapore and wants to plan around the amount received and the arrival time.",
+        channel: "A student association, university or education service provider in Bangkok.",
+        alternatives: [
+          ["Participating PromptPay–PayNow bank apps", "A way to send eligible transfers across the corridor. Compare eligibility, confirmation and what other information users need.", "https://www.bot.or.th/en/financial-innovation/digital-finance/digital-payment/cross-border-payment.html"],
+          ["SCB EASY international transfers", "An international transfer feature in a participating bank app. Compare the journey for the team’s intended recipient and payment purpose.", "https://www.scb.co.th/en/personal-banking/digital-banking/scb-easy/how-to/international-transfer"]
+        ],
+        signal: "Families said speed matters after they understand the amount their relative can use.",
+        interview: "Six of eight looked for predictable arrival and a clear received amount before describing speed as a reason to switch.",
+        prototype: "Six of eight could distinguish delivered amount from arrival estimate when the mock screen displayed them separately.",
+        competitor: "A participating bank separates delivered amount and estimated arrival time in its transfer flow.",
+        narrow: "Offer one scheduled THB-to-SGD transfer scenario with separate copy for delivered amount and arrival. Four of five mock users interpreted both correctly.",
+        incident: "Families ask whether all transfers to Singapore are instant. A valid correction identifies the supported route and describes delivery estimates conditionally.",
+        review: "Check which institutions and transfer types the promised timing actually covers."
+      }
+    }
+  },
+  vietnam: {
+    name: "Vietnam", city: "Ho Chi Minh City", currency: "VND", code: "VN",
+    facts: [
+      ["Working context", "Use Vietnamese in the onboarding and support prototypes. Ho Chi Minh City is one hour behind Singapore."],
+      ["Payment context", "NAPAS FastFund 247 uses VietQR for domestic transfers among participating member banks. The Bank of Thailand documents a separate Vietnam–Thailand QR linkage for participating banks."],
+      ["Economic context", "2024 GDP per capita was about US$4,700. The economic case depends on the selected user’s current receipt, transfer or travel experience."]
+    ],
+    sources: ["napas", "bot", "indicators"],
+    candidates: {
+      pilot: ["Delta Payment Services", "It will scope one Ho Chi Minh City cohort. Customer support covers agreed hours and needs a clear escalation handoff."],
+      alliance: ["Viet Gateway Network", "It offers introductions to local banks and prospective recruitment partners. Access depends on contracts and scoped permissions."],
+      acquisition: ["Saigon Transfer Lab", "The technical team knows transfer-status tracking. Retention of the lead engineers remains uncertain."]
+    },
+    diligence: "Two lead engineers intend to leave unless a retention plan is agreed. Make written key-person commitments or a validated replacement plan a closing condition.",
+    profiles: {
+      A: {
+        name: "Freelancers paid by Singapore clients", journey: "A Ho Chi Minh City freelancer wants the received VND amount, status and proof of receipt. Verify who initiates the transfer and whether the payment purpose is supported.",
+        channel: "A freelancer community or platform that can also reach client firms in Singapore.",
+        alternatives: [wise, dbs],
+        signal: "Freelancers ask for a dependable receipt both they and the client can understand.",
+        interview: "Six of eight asked for something they could use to reconcile the amount with the client. A message that money was sent was insufficient.",
+        prototype: "Seven of eight used the exportable summary to find the confirmed amount and status in a mock transfer.",
+        competitor: "A local provider adds a downloadable status receipt in one competing transfer flow.",
+        narrow: "Focus on one SGD-to-VND payment purpose and a bilingual proof-of-receipt screen. Four of five mock users could locate the received amount and identify its status.",
+        incident: "Customers ask whether every VietQR code can receive international funds. A valid correction names the intended payout route and explains the distinction from the domestic service.",
+        review: "Check the authorized international route, the local payout step and what the receipt can assert."
+      },
+      B: {
+        name: "Frequent regional travellers", journey: "A resident travelling to Singapore wants predictable FX spending and help in Vietnamese when a payment fails.",
+        channel: "A local travel community or university exchange programme.",
+        alternatives: [
+          ["Techcombank Visa Classic", "An international debit card. Compare acceptance, visibility of costs and access to support.", "https://techcombank.com/en/personal/spend/cards/debit-card/techcombank-visa-classic"],
+          ["Vietcombank international debit cards", "A bank-issued alternative for spending abroad. Compare the actual payment flow and how foreign charges are explained.", "https://digibankm5.vietcombank.com.vn/get_file/ibomni/html/mo-ta-sp-the-ghi-no-quoc-te.html"]
+        ],
+        signal: "Travellers ask whom they can contact in Vietnamese when a payment abroad fails.",
+        interview: "Five of eight travellers said phone or in-app support in Vietnamese would affect their first choice of product.",
+        prototype: "Six of eight found the Vietnamese-labelled help entry in the mock flow without assistance.",
+        competitor: "A competing travel-card provider adds Vietnamese-language travel support.",
+        narrow: "Focus on Vietnamese-speaking travellers on one Singapore journey. Four of five mock users found the correct support handoff after a failed payment.",
+        incident: "Travellers ask whether a domestic QR setup guarantees acceptance in Singapore. A valid correction names eligible payment methods and gives a support contact.",
+        review: "Check the proposed payment method’s geographic scope and the availability of Vietnamese-language support."
+      }
+    }
+  }
+};
+
+const BRIEF = [
+  "Revolut hires four consulting teams. Each team receives one market for a potential retail launch built around international transfers and multi-currency payments. Start with one user segment, one use case and one customer acquisition channel.",
+  "The Singapore operation is your comparison base. Revolut’s real expansion took different routes: a direct licence and beta before the Mexican launch, and central bank approval for the planned Banco Cetelem acquisition in Argentina. The Board in this case must choose how to commit resources in Asia.",
+  "You have 9 Launch Credits for preparation. The Board grants one team conditional funding for the next step and gives its market first launch priority once the conditions are met. The approval of the funded step and permission for live activity are separate decisions.",
+  "Named markets, public services and competitors are real. Candidate organisations, customer research, rival moves, the emergency and all results are simulated. Buying an action does not grant permission to operate."
+];
+
+const ROUNDS = [
+  ["R1", "Customer", "Choose the first customer", "18:30–18:46", "A", "Settle on one customer, use case and channel. Compare Singapore with your assigned market on all four CAGE dimensions."],
+  ["R2", "Evidence", "Buy evidence or save credits", "18:46–19:02", "desk", "Compare two real alternatives. Identify the assumption most likely to change your offer."],
+  ["R3", "Entry route", "Choose the entry route", "19:02–19:20", "planning", "Set milestones for months 0–3, 4–6 and 7–12. Show how learning and a local relationship justify each next commitment."],
+  ["R4", "Readiness", "Verify readiness or keep a reserve", "19:20–19:30", "reserve", "Identify the first permission, agreement or operational dependency that you need to verify, and keep track of your remaining credits."],
+  ["R5", "Competition", "Respond to a competitor", "19:40–19:54", "keep", "Choose what will differentiate your offer after the rival’s move. Make the case for any new expense."],
+  ["R6", "Emergency", "Respond to the emergency", "19:54–20:14", "hold", "Write actions for the first and next 24 hours. State who clears the correction and what evidence would let you reopen."],
+  ["R7", "Board", "Choose what the Board should fund", "20:14–20:29", "defer", "Choose one funding ask. Name the milestone, the condition for live activity, and the decision you would change if your assumption fails."]
+].map(([id, short, title, time, fallback, task]) => ({ id, short, title, time, fallback, task }));
+
+const BULLETINS = {
+  A: "A comparison website publishes a cropped concept image with the headline ‘Revolut guarantees zero fees and instant delivery in four new markets.’ Customers ask about charges and dates. Draft a holding statement and list two facts to verify before making a corrective claim.",
+  B: "The image came from a concept demo. No customer funds moved and no local product launched. The website will run a correction if it receives approved wording. There were 2 enquiries among 20 people reached by teams that planned one cohort and 8 among 40 for teams that planned two. The market note below identifies the claim your intended customer misunderstood."
+};
+
+const WORKSHEET = {
+  R1: [
+    ["proposition", "First customer, who uses Revolut, use case and channel"],
+    ["cultural", "Cultural · Singapore evidence → market evidence → impact"],
+    ["administrative", "Administrative · Singapore evidence → market evidence → impact"],
+    ["geographic", "Geographic · Singapore evidence → market evidence → impact"],
+    ["economic", "Economic · Singapore evidence → market evidence → impact"],
+    ["cage", "Two important differences and one decision they change"]
+  ],
+  R2: [["alternatives", "Two competing offers, how they compare and what you still need to learn"]],
+  R3: [
+    ["early", "Months 0–3 · first move, relationship and learning goal"],
+    ["middle", "Months 4–6 · test, metric and threshold"],
+    ["later", "Months 7–12 · next commitment and when to stop"],
+    ["tradeoff", "Rejected entry route, first costs and permissions to check"]
+  ],
+  R4: [["gate", "One open condition, its owner and how to verify it"]],
+  R5: [["position", "Response to the rival and why customers would choose you"]],
+  R6: [
+    ["holding", "First statement and two facts to verify"],
+    ["response", "First 24 hours and next 24 hours"],
+    ["approval", "Correction, who clears it and a reopening condition"]
+  ],
+  R7: [["board", "Funding request, milestone and why your market should go first"]]
+};
+
+const RUBRIC = [
+  ["Written", "CAGE", 20, [
+    "Addresses all four dimensions", "Compares Singapore and the target market using facts or explicit gaps",
+    "Prioritizes two distances", "Connects a distance to a concrete decision"
+  ]],
+  ["Written", "Competitive fit", 12, [
+    "Defines one customer and first use case", "Compares two relevant real alternatives",
+    "Supports the differentiator with evidence", "Chooses a first channel and a demand test"
+  ]],
+  ["Written", "Uppsala and entry route", 16, [
+    "Links dated stages of learning and commitment", "Explains a valuable local relationship",
+    "Compares entry routes and addresses permissions", "Names growth and stop thresholds"
+  ]],
+  ["Written", "Resources", 12, [
+    "Reconciles the credit ledger", "Identifies two early costs",
+    "Explains one deliberately deferred expense", "Links an early expense to a later option"
+  ]],
+  ["Written", "Emergency", 10, [
+    "Uses confirmed facts and an available action", "Specifies actions for both 24-hour periods",
+    "Names the customer message and clearance owner", "States a measurable reopening condition"
+  ]],
+  ["Oral", "Board pitch", 20, [
+    "States a specific funding ask and customer", "Defends two logged decisions",
+    "Makes the case for placing this market first", "Explains the trade-off and next milestone"
+  ]],
+  ["Oral", "Common question", 10, [
+    "Names the critical assumption", "Explains its impact",
+    "Names evidence and a decision threshold", "States which commitment would change"
+  ]]
+];
+
+const QUESTION = "Which assumption most threatens your plan, and what specific evidence would make you change your next commitment?";
+
+// src/rules.mjs
+const SCHEDULE = [
+  [-20, 0, "SETUP", "Team assignments, Board brief and practice"],
+  [0, 16, "R1", "Customer and CAGE"],
+  [16, 32, "R2", "Customer evidence"],
+  [32, 50, "R3", "Entry route and Uppsala"],
+  [50, 60, "R4", "Readiness and checkpoint"],
+  [60, 70, "BREAK", "Break and JSON checkpoint"],
+  [70, 84, "R5", "Competitor response"],
+  [84, 104, "R6", "Emergency · bulletin B at +8 minutes"],
+  [104, 119, "R7", "Recommendation"],
+  [119, 130, "PREP", "Board Brief preparation"],
+  [130, 146, "PITCH", "Four pitches · 3 minutes and 1 question each"],
+  [146, 150, "DEBRIEF", "Funding decision and debrief"]
+].map(([from, to, id, label]) => ({from, to, id, label}));
+
+const MINUTE = 60_000;
+const TEAMS = [1, 2, 3, 4];
+const PRICE = {
+  interview: 2, prototype: 3, pilot: 2, alliance: 3, acquisition: 5,
+  verify: 2, narrow: 1, broaden: 2, diligence: 1, targeted: 1,
+  fullOne: 3, fullTwo: 4
+};
+const ROUTES = { pilot: "Pilot with local provider", alliance: "Contractual alliance", acquisition: "Prepare an acquisition", planning: "Preparation without a selected route" };
+const OUTCOMES = {
+  pilot: ["Conditional first pilot", "Request approval for one cohort subject to confirmed permissions, provider readiness and the named launch condition. Add a second cohort only if it survived the correction and the first cohort meets your threshold."],
+  deal: ["Conditional acquisition work", "Request continued deal work against the named closing condition. Closing, permissions, operational readiness and a separate launch decision remain ahead."],
+  retest: ["Fund a supervised test", "Request one mock cohort without live funds or public launch. Return to the Board with proof against your stated milestone."],
+  defer: ["Fund preparation and defer", "Request a specific preparation step. Name the unresolved obstacle, evidence required and review date."]
+};
+
+function permutations(items) {
+  if (items.length === 1) return [items];
+  return items.flatMap((item, index) =>
+    permutations(items.filter((_, rest) => rest !== index)).map(rest => [item, ...rest]));
+}
+
+const assignments = permutations(Object.keys(MARKETS));
+
+function makeRoom(start, assignmentIndex, suffix) {
+  return "OMF-" + Math.floor(start / MINUTE).toString(36).toUpperCase() + "-" +
+    assignmentIndex.toString(36).toUpperCase() + suffix.toUpperCase();
+}
+
+function roomParts(value) {
+  return /^OMF-([A-Z0-9]{5,7})-([0-9A-N])([A-Z0-9]{3})$/.exec(String(value).trim().toUpperCase());
+}
+
+function roomStart(value) {
+  const match = roomParts(value);
+  if (!match) return null;
+  const start = parseInt(match[1], 36) * MINUTE;
+  return start >= Date.UTC(2025, 0, 1) && start <= Date.UTC(2100, 0, 1) ? start : null;
+}
+
+function marketForTable(room, team) {
+  const match = roomParts(room);
+  return match ? assignments[parseInt(match[2], 36)]?.[team - 1] : null;
+}
+
+function phaseAt(room, now) {
+  const minute = (now - roomStart(room)) / MINUTE;
+  const phase = SCHEDULE.find(item => minute >= item.from && minute < item.to);
+  return phase ? {...phase, minute, bulletinB: phase.id === "R6" && minute >= 92} :
+    {id: minute < 0 ? "SETUP" : "END", minute, to: minute < 0 ? 0 : null, bulletinB: false};
+}
+
+function endOfRound(room, id) {
+  return roomStart(room) + SCHEDULE.find(phase => phase.id === id).to * MINUTE;
+}
+
+function startOfRound(room, id) {
+  return roomStart(room) + SCHEDULE.find(phase => phase.id === id).from * MINUTE;
+}
+
+function initialProgress() {
+  return {
+    credits: CONFIG.budget, profile: null, research: null, route: null, verified: false, narrow: false,
+    cohorts: 1, diligence: false, incident: null, launchEvidence: false, result: null
+  };
+}
+
+function option(id, cost, label, description, blocked = "") {
+  return {id, cost, label, description, blocked};
+}
+
+function optionsFor(id, state, marketId) {
+  const market = MARKETS[marketId];
+  const profile = market.profiles[state.profile];
+  let options;
+  switch (id) {
+    case "R1":
+      options = Object.entries(market.profiles).map(([key, item]) => option(key, 0, item.name, item.journey));
+      break;
+    case "R2":
+      options = [
+        option("desk", 0, "Keep the base dossier", "Use the market facts and first customer signal. Preserve credits for entry or the emergency."),
+        option("interview", PRICE.interview, "Buy an interview follow-up", "Get evidence about why this segment might switch. This measures stated preferences."),
+        option("prototype", PRICE.prototype, "Test the mock journey", "Get a result on how users interpret the quote, status or support screen. No money moves.")
+      ];
+      break;
+    case "R3":
+      options = [
+        option("pilot", PRICE.pilot, ROUTES.pilot, "Scope one use case, in one city, with one cohort. The local provider handles any authorized activity after permission and readiness checks."),
+        option("alliance", PRICE.alliance, ROUTES.alliance, "Prepare a co-branded offer and define distribution and support responsibilities. In R5 you may add a second cohort if you can afford it."),
+        option("acquisition", PRICE.acquisition, ROUTES.acquisition, "Screen the target, plan diligence and integration. The deeper transaction check in R5 is needed for a deal mandate at the Board.")
+      ];
+      break;
+    case "R4":
+      options = [
+        option("reserve", 0, "Keep a reserve", "Record a permission or contract dependency. Pay the standard rates if you later need to issue and test a correction."),
+        option("verify", PRICE.verify, "Verify readiness", "Buy a scoped finding and pre-agreed correction wording. An approved one-channel correction is free. A full correction and retest costs one credit less.")
+      ];
+      break;
+    case "R5":
+      options = [
+        option("keep", 0, "Keep your proposition", "Keep the use case and one channel. Defend a claim the competitor still leaves open."),
+        option("narrow", PRICE.narrow, "Narrow and test the proposition", "Keep the R1 profile. Limit the corridor, subgroup or promise and unlock a five-person mock result. You may reuse the tested scope for a targeted correction."),
+        option("broaden", PRICE.broaden, "Add a second cohort and channel", "Reach a second group in the same city and segment. Full correction costs more when two channels are exposed.",
+          state.route === "alliance" ? "" : "Available on the alliance route."),
+        option("diligence", PRICE.diligence, "Investigate the deal’s main risk", "Get a target-specific finding and a closing condition. This qualifies you to request deal work once outreach has been corrected.",
+          state.route === "acquisition" ? "" : "Available on the acquisition route.")
+      ];
+      break;
+    case "R6":
+      options = [
+        option("hold", 0, "Hold outreach", "Publish a holding statement and document the incident. The next ask can fund preparation and a later review."),
+        option("targeted", state.verified ? 0 : PRICE.targeted, "Correct one channel", "Correct one channel and pause all uncorrected messages. Keep one cohort. Readiness verification or the narrow mock test lets you validate the correction in that cohort."),
+        option("full", (state.cohorts === 2 ? PRICE.fullTwo : PRICE.fullOne) - Number(state.verified),
+          "Correct every channel and retest", "Correct all planned channels and run a mock comprehension check with 20 people per cohort. Each cohort needs at least 16 correct responses. A prior prototype, preparation of approved wording or a narrowed test can improve the result.")
+      ];
+      break;
+    case "R7": {
+      const pilotBlock = !["pilot", "alliance"].includes(state.route) ? "Requires a pilot or alliance route." :
+        state.launchEvidence ? "" : "Requires evidence that users understood the corrected offer.";
+      const dealBlock = state.route !== "acquisition" ? "Requires the acquisition route." :
+        !state.diligence ? "Requires the R5 deal-risk check." :
+        state.incident === "hold" ? "Requires at least a targeted public correction in R6." : "";
+      options = [
+        option("pilot", 0, "Request conditional approval for a pilot", "The Board can approve the next step. Live activity still depends on the stated launch conditions.", pilotBlock),
+        option("deal", 0, "Request a conditional mandate for deal work", "Request deeper diligence or negotiation against a specific closing condition. A go-live decision follows separately.", dealBlock),
+        option("retest", 0, "Request one revised mock test", "Use one cohort with no live funds. Return to the Board before seeking pilot approval.",
+          state.incident === "hold" ? "Outreach is on hold. Request preparation and a review instead." : ""),
+        option("defer", 0, "Defer live activity and fund preparation", "Request one preparatory step and set a condition and a date for returning to the Board.")
+      ];
+      break;
+    }
+    default: throw new Error("Unknown round.");
+  }
+
+  return options.map(item => ({
+    ...item,
+    blocked: item.blocked || (item.cost > state.credits ? "Needs " + item.cost + " credits. You have " + state.credits + "." : "")
+  }));
+}
+
+function fallbackFor(round, state, marketId) {
+  if (round.id === "R3") return option("planning", 0, ROUTES.planning, "Continue with one mock cohort. There is no live entry route to present.");
+  return optionsFor(round.id, state, marketId).find(item => item.id === round.fallback);
+}
+
+function dealClause(route) {
+  return {
+    pilot: "Check that the local provider is ready and permitted to run the specified activity. The provider must approve claims about fees and availability.",
+    alliance: "Set the exact approval responsibility in the draft agreement. Both firms must clear a co-branded public offer before release.",
+    acquisition: "Check which permissions, vendor terms and claims would survive a change of control. The target’s existing arrangements do not carry over automatically."
+  }[route] || "Scope a mock test and identify a licensed provider before discussing any live activity.";
+}
+
+function pendingFact(round, state, marketId) {
+  const market = MARKETS[marketId];
+  const profile = market.profiles[state.profile];
+  return {
+    R2: profile?.signal,
+    R4: dealClause(state.route),
+    R5: profile?.competitor,
+    R7: "The Board can fund one next step and reserve first-launch priority for that market. State exactly what it is being asked to approve."
+  }[round];
+}
+
+function responseResult(state, selection, profile) {
+  if (selection === "hold") return {
+    incident: "hold", launchEvidence: false, cohorts: state.cohorts,
+    result: "Outreach stopped. Preserve the evidence and propose a review date."
+  };
+  if (selection === "targeted") {
+    const loss = state.cohorts === 2 ? "The second cohort is removed. " : "";
+    const proven = state.verified || state.narrow;
+    const reason = state.verified ? "The prior wording review supports a scoped follow-up." :
+      state.narrow ? "The earlier narrow prototype supports a scoped follow-up." : "";
+    return {
+      cohorts: 1, incident: "targeted", launchEvidence: proven,
+      result: loss + (proven ? reason + " Four of five mock users in the retained cohort understood the correction. The result supports a conditional proposal for that scope." :
+        "One channel is corrected. No comprehension result is available yet. A new test is needed before a pilot ask.")
+    };
+  }
+  const advantage = state.narrow ? 2 : Number(state.verified || state.research === "prototype");
+  const firstResult = state.narrow ? 18 : state.cohorts === 2 ? 16 + advantage : 15 + advantage;
+  const counts = state.cohorts === 2 ? [firstResult, 17] : [firstResult];
+  const launchEvidence = counts.every(count => count >= 16);
+  return {
+    incident: "full", launchEvidence, cohorts: state.cohorts,
+    result: "Full retest: " + counts.map((count, index) => "cohort " + (index + 1) + " " + count + "/20").join(", ") +
+      " correctly identified the scope and corrected claim. The threshold is 16/20 in each cohort. " +
+      (launchEvidence ? "The retest met the threshold. " : "The retest missed the threshold. A revised test is needed for a pilot. ") + profile.incident
+  };
+}
+
+function applyChoice(state, round, selection, marketId) {
+  const market = MARKETS[marketId];
+  const profile = market.profiles[state.profile];
+  const next = {...state, credits: state.credits - selection.cost, result: null};
+  switch (round.id) {
+    case "R1":
+      next.profile = selection.id;
+      next.result = "Selected " + market.profiles[selection.id].name + ". The dossier and later events follow this profile.";
+      break;
+    case "R2":
+      next.research = selection.id;
+      next.result = {desk: "The base dossier is your evidence. Record what you would test next.", interview: profile.interview, prototype: profile.prototype}[selection.id];
+      break;
+    case "R3":
+      next.route = selection.id;
+      next.result = market.candidates[selection.id]?.join(" · ") || selection.description;
+      break;
+    case "R4":
+      next.verified = selection.id === "verify";
+      next.result = next.verified ? "Scoped review: " + profile.review + " Use the approved template: ‘This is a concept test for [scope]. Availability, timing and fees depend on [conditions]. For questions: [approved contact].’ This supports a one-channel follow-up and lowers the cost of the full retest." :
+        "Reserve retained. The open condition remains: " + dealClause(state.route);
+      break;
+    case "R5":
+      next.narrow = selection.id === "narrow";
+      next.diligence = selection.id === "diligence";
+      next.cohorts = selection.id === "broaden" ? 2 : 1;
+      next.result = {keep: "One cohort. The key claim still needs to stand up to the rival’s offer.", narrow: profile.narrow,
+        broaden: "Two cohorts and two channels. A targeted correction retains one cohort. A full retest can keep both.", diligence: market.diligence}[selection.id];
+      break;
+    case "R6":
+      Object.assign(next, responseResult(state, selection.id, profile));
+      break;
+    case "R7":
+      next.result = OUTCOMES[selection.id][1];
+      break;
+  }
+  return next;
+}
+
+function isDraftComplete(draft) {
+  return !!draft?.choice && !!draft.evidence?.trim() && !!draft.tradeoff?.trim();
+}
+
+function resolveChoice(event, round, state, marketId) {
+  if (event.method === "default") {
+    const fallback = fallbackFor(round, state, marketId);
+    if (event.choice !== fallback.id) throw new Error("Unexpected default in " + round.id + ".");
+    return fallback;
+  }
+  if (!["submitted", "deadline"].includes(event.method) || !isDraftComplete(event)) {
+    throw new Error("Incomplete decision in " + round.id + ".");
+  }
+  const chosen = optionsFor(round.id, state, marketId).find(item => item.id === event.choice);
+  if (!chosen || chosen.blocked) throw new Error(chosen?.blocked || "Invalid choice in " + round.id + ".");
+  return chosen;
+}
+
+function replay(record) {
+  let state = initialProgress();
+  const path = record.history.map((event, index) => {
+    const round = ROUNDS[index];
+    if (!round || event.round !== round.id) throw new Error("Decisions are out of order.");
+    const chosen = resolveChoice(event, round, state, record.market);
+    state = applyChoice(state, round, chosen, record.market);
+    return {...event, label: chosen.label, cost: chosen.cost, credits: state.credits, result: state.result, state};
+  });
+  return {state, path};
+}
+
+function newDecision(record, progress, round, method, now) {
+  const draft = record.drafts[round.id] || {};
+  const choice = method === "default" ? fallbackFor(round, progress, record.market).id : draft.choice;
+  const event = {round: round.id, method, choice, at: new Date(now).toISOString(), evidence: draft.evidence || "", tradeoff: draft.tradeoff || ""};
+  if (method !== "default") resolveChoice(event, round, progress, record.market);
+  return {...record, history: [...record.history, event]};
+}
+
+function settleDeadlines(record, now) {
+  if (record.mode !== "live") return record;
+  for (const round of ROUNDS.slice(record.history.length)) {
+    const deadline = endOfRound(record.room, round.id);
+    if (now < deadline) break;
+    const {state} = replay(record);
+    const draft = record.drafts[round.id];
+    const valid = isDraftComplete(draft) && optionsFor(round.id, state, record.market).some(item => item.id === draft.choice && !item.blocked);
+    record = newDecision(record, state, round, valid ? "deadline" : "default", deadline);
+  }
+  return record;
+}
+
+function lockRound(record, roundId, now, useDefault = false) {
+  const round = ROUNDS[record.history.length];
+  if (round?.id !== roundId) throw new Error("This round is already closed.");
+  assertOpen(record, roundId, now);
+  if (roundId === "R6" && !canReadBulletinB(record, now)) throw new Error("Wait for bulletin B before locking a response.");
+  if (useDefault && record.mode === "live") throw new Error("The classroom default applies when the round closes.");
+  return newDecision(record, replay(record).state, round, useDefault ? "default" : "submitted", now);
+}
+
+function canReadBulletinB(record, now) {
+  return record.mode === "practice" ? record.bulletinB :
+    now >= roomStart(record.room) + 92 * MINUTE;
+}
+
+function assertOpen(record, roundId, now) {
+  const round = ROUNDS.find(item => item.id === roundId);
+  if (!round) throw new Error("Unknown round.");
+  if (record.mode === "live") {
+    if (phaseAt(record.room, now).id !== roundId) throw new Error("This round is not open.");
+  } else {
+    const active = ROUNDS[record.history.length]?.id;
+    const justLocked = record.history.at(-1)?.round;
+    if (active !== roundId && justLocked !== roundId) throw new Error("This practice round is closed.");
+  }
+}
+
+function updateDraft(record, roundId, field, value, now) {
+  assertOpen(record, roundId, now);
+  if (ROUNDS[record.history.length]?.id !== roundId) throw new Error("The decision has already been locked.");
+  if (field === "choice") {
+    if (roundId === "R6" && !canReadBulletinB(record, now)) throw new Error("Wait for bulletin B.");
+    const selected = optionsFor(roundId, replay(record).state, record.market).find(item => item.id === value && !item.blocked);
+    if (!selected) throw new Error("This choice is unavailable.");
+  } else if (field !== "evidence" && field !== "tradeoff") throw new Error("Unknown draft field.");
+  const draft = {...record.drafts[roundId], [field]: value.slice(0, CONFIG.maxNote)};
+  return {...record, drafts: {...record.drafts, [roundId]: draft}};
+}
+
+function updateNote(record, roundId, field, value, now) {
+  assertOpen(record, roundId, now);
+  if (!WORKSHEET[roundId]?.some(item => item[0] === field)) throw new Error("Unknown worksheet field.");
+  return {...record, notes: {...record.notes, [roundId + "." + field]: value.slice(0, CONFIG.maxNote)}};
+}
+
+function updateBrief(record, value, now) {
+  const ready = record.mode === "practice" ? record.history.length === ROUNDS.length : phaseAt(record.room, now).id === "PREP";
+  if (!ready) throw new Error("The Board Brief is closed for editing.");
+  return {...record, brief: value.slice(0, CONFIG.maxNote * 3)};
+}
+
+function normalizeNotes(source) {
+  const notes = {};
+  for (const [round, fields] of Object.entries(WORKSHEET)) {
+    for (const [field] of fields) {
+      const key = round + "." + field;
+      if (typeof source?.[key] === "string") notes[key] = source[key].slice(0, CONFIG.maxNote);
+    }
+  }
+  return notes;
+}
+
+function cleanText(value) {
+  return typeof value === "string" ? value.slice(0, CONFIG.maxNote) : "";
+}
+
+function validateRecord(record) {
+  if (record?.game !== CONFIG.game || record.version !== CONFIG.version) throw new Error("This file belongs to another game or rules version.");
+  const {mode, team, market, room, history} = record;
+  if (!["live", "practice"].includes(mode) || !TEAMS.includes(team) || !Object.hasOwn(MARKETS, market) ||
+      (mode === "live" ? roomStart(room) === null || room !== room.trim().toUpperCase() || marketForTable(room, team) !== market : room !== "PRACTICE") ||
+      !Array.isArray(history) || history.length > ROUNDS.length) throw new Error("Invalid team or room record.");
+  const clean = {
+    game: CONFIG.game, version: CONFIG.version, mode, team, market, room,
+    session: cleanText(record.session), history: [], drafts: {},
+    notes: normalizeNotes(record.notes), bulletinB: mode === "practice" && record.bulletinB === true,
+    brief: typeof record.brief === "string" ? record.brief.slice(0, CONFIG.maxNote * 3) : ""
+  };
+  if (!clean.session) throw new Error("The record is missing a session ID.");
+  if (mode === "practice" && history.length >= 6 && !clean.bulletinB) throw new Error("The emergency decision is missing bulletin B.");
+  clean.history = history.map((event, index) => {
+    const round = ROUNDS[index];
+    const at = Date.parse(event?.at);
+    if (!Number.isFinite(at)) throw new Error("Invalid timestamp in " + round.id + ".");
+    if (mode === "live") {
+      const first = startOfRound(room, round.id) + (round.id === "R6" && event.method === "submitted" ? 8 * MINUTE : 0);
+      const last = endOfRound(room, round.id);
+      const timely = event.method === "submitted" ? at >= first && at < last : at === last;
+      if (!timely) throw new Error("Decision timestamp does not match the room schedule.");
+    }
+    return {round: event.round, choice: event.choice, method: event.method, at: new Date(at).toISOString(),
+      evidence: cleanText(event.evidence), tradeoff: cleanText(event.tradeoff)};
+  });
+  replay(clean);
+  for (const {id} of ROUNDS) {
+    const draft = record.drafts?.[id];
+    if (!draft || typeof draft !== "object") continue;
+    clean.drafts[id] = {choice: cleanText(draft.choice), evidence: cleanText(draft.evidence), tradeoff: cleanText(draft.tradeoff)};
+  }
+  return clean;
+}
+
+function scoreJury(submissions) {
+  if (!Array.isArray(submissions) || submissions.length !== 3 || ![0, 1, 2].every(index => submissions[index]?.complete)) return null;
+  let written = 0;
+  let oral = 0;
+  let uppsala = 0;
+  for (const expert of submissions) {
+    RUBRIC.forEach(([section, name, weight], index) => {
+      const checked = (expert.checks?.[index] || []).slice(0, 4).filter(check => check === true).length;
+      const points = checked * weight / 4;
+      if (section === "Written") written += points;
+      else oral += points;
+      if (name === "Uppsala and entry route") uppsala += points;
+    });
+  }
+  return {written: written / 3, oral: oral / 3, uppsala: uppsala / 3, total: (written + oral) / 3};
+}
+
+function compareScores(a, b) {
+  return b.total - a.total || b.oral - a.oral || b.uppsala - a.uppsala;
+}
+
+// src/storage.mjs
+const prefix = CONFIG.game + ":" + CONFIG.version;
+const memory = new Map();
+let writable = true;
+
+function storageAvailable() {
+  return writable;
+}
+
+function getStored(key) {
+  if (writable) {
+    try {
+      const value = localStorage.getItem(key);
+      if (value === null) memory.delete(key);
+      else memory.set(key, value);
+      return value;
+    } catch {
+      writable = false;
+    }
+  }
+  return memory.get(key) ?? null;
+}
+
+function putStored(key, value) {
+  if (value === null) memory.delete(key);
+  else memory.set(key, value);
+  if (writable) {
+    try {
+      if (value === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, value);
+    } catch {
+      writable = false;
+    }
+  }
+}
+
+function teamKey(room, team) {
+  return prefix + ":" + room + ":team:" + team;
+}
+
+function hostKey(room) {
+  return prefix + ":" + room + ":facilitator";
+}
+
+function readSlot(room, team) {
+  const raw = getStored(teamKey(room, team));
+  if (raw === null) return null;
+  const record = validateRecord(JSON.parse(raw));
+  if (record.room !== room || record.team !== team) throw new Error("This saved record belongs to a different table.");
+  return record;
+}
+
+function storeRecord(record) {
+  putStored(teamKey(record.room, record.team), JSON.stringify(record));
+}
+
+function activeTeam(value) {
+  const key = prefix + ":active";
+  try {
+    if (value === undefined) return JSON.parse(sessionStorage.getItem(key));
+    if (value === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    return null;
+  }
+}
+
+function newId() {
+  return globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+function newRecord(mode, room, team, market) {
+  return validateRecord({
+    game: CONFIG.game, version: CONFIG.version, mode, room, team, market,
+    session: newId(), history: [], drafts: {}, notes: {}, brief: "", bulletinB: false
+  });
+}
+
+function withSaveLock(key, change) {
+  return navigator.locks?.request(key, change) || Promise.resolve().then(change);
+}
+
+function knownTable(value) {
+  return value && TEAMS.includes(value.team) && (value.room === "PRACTICE" || roomStart(value.room) !== null);
+}
+
+// src/presentation.mjs
+function esc(value) {
+  return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+function button(label, action, kind = "", attributes = "") {
+  return '<button type="button" class="pv-button' + (kind ? ' pv-button--' + kind : '') +
+    '" data-action="' + action + '" ' + attributes + '>' + esc(label) + '</button>';
+}
+
+function disclosure(label, body, open = false) {
+  return '<details class="pv-summary"' + (open ? " open" : "") + '><summary>' + esc(label) +
+    '</summary><div class="pv-detail-body">' + body + '</div></details>';
+}
+
+function facts(pairs, className = "pv-facts") {
+  return '<dl class="' + className + '">' + pairs.map(([label, value]) =>
+    '<div><dt>' + esc(label) + '</dt><dd>' + esc(value) + '</dd></div>').join("") + '</dl>';
+}
+
+function stage(title, label, body, tone = "") {
+  return '<section class="pv-stage" aria-labelledby="omf-stage-title"><header class="pv-stage-head' +
+    (tone ? ' pv-stage-head--' + tone : '') + '"><p class="pv-mono">' + esc(label) +
+    '</p><h2 id="omf-stage-title" tabindex="-1">' + esc(title) +
+    '</h2></header><div class="pv-stage-body">' + body + '</div></section>';
+}
+
+function saveFile(filename, data, mime) {
+  const url = URL.createObjectURL(new Blob([data], {type: mime}));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const moscowClock = new Intl.DateTimeFormat("en-GB", {timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit", hourCycle: "h23"});
+
+function interval(room, start, end) {
+  const base = roomStart(room);
+  return moscowClock.format(base + start * 60_000) + "–" + moscowClock.format(base + end * 60_000);
+}
+
+function countdown(delta) {
+  const seconds = Math.max(0, Math.ceil(delta / 1000));
+  return String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+}
+
+function textReport(record, boardOnly = false) {
+  const {state, path} = replay(record);
+  const market = MARKETS[record.market];
+  const profile = market.profiles[state.profile];
+  const lines = [
+    boardOnly ? "REVOLUT · BOARD BRIEF" : "REVOLUT · TEAM DECISION JOURNAL",
+    "Table " + record.team + " · " + market.name + " · " + record.room,
+    "Customer: " + (profile?.name || "Pending"),
+    "Credits spent: " + (CONFIG.budget - state.credits) + " · remaining: " + state.credits
+  ];
+  if (path.length === ROUNDS.length) lines.push("Funding request: " + OUTCOMES[path.at(-1).choice][0]);
+  if (record.brief) lines.push("", record.brief);
+  if (!boardOnly) {
+    for (const event of path) {
+      lines.push("", event.round + " " + event.label + " · cost " + event.cost + " · balance " + event.credits + " · " + event.method);
+      if (event.evidence) lines.push("Evidence: " + event.evidence);
+      if (event.tradeoff) lines.push("Trade-off: " + event.tradeoff);
+      if (event.result) lines.push("Result: " + event.result);
+      for (const [field, label] of WORKSHEET[event.round]) {
+        const value = record.notes[event.round + "." + field];
+        if (value) lines.push(label + ": " + value);
+      }
+    }
+  } else {
+    if (!record.brief) lines.push("", "Team worksheet highlights:");
+    const fields = [["R1.cage", "CAGE"], ["R3.later", "Next commitment"], ["R6.approval", "Reopening condition"], ["R7.board", "Board request"]];
+    for (const [key, label] of fields) {
+      if (!record.brief && record.notes[key]) lines.push(label + ": " + record.notes[key]);
+    }
+    lines.push("", "For the hearing: " + QUESTION);
+  }
+  return lines.join("\n");
+}
+
+function teamFilename(record, extension, name = "journal") {
+  return "revolut-" + record.room.toLowerCase() + "-table-" + record.team + "-" + record.market + "-" + name + "." + extension;
+}
+
+// src/host.mjs
+const activeKey = hostKey("active");
+const moscowDate = new Intl.DateTimeFormat("sv-SE", {timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit"});
+function freshPanel() {
+  return {records: {}, grades: {}};
+}
+
+const host = {room: "", start: "", selected: 1, panel: freshPanel()};
+try {
+  const room = getStored(activeKey);
+  if (roomStart(room) !== null) {
+    host.room = room;
+    const panel = JSON.parse(getStored(hostKey(room)));
+    if (panel) host.panel = panel;
+  }
+} catch {
+  host.panel = freshPanel();
+}
+
+function storePanel() {
+  putStored(activeKey, host.room);
+  putStored(hostKey(host.room), JSON.stringify(host.panel));
+}
+
+function startForm() {
+  const today = moscowDate.format(new Date());
+  const planned = Date.parse(today + "T18:30+03:00");
+  const date = moscowDate.format(new Date(planned > Date.now() ? planned : planned + 86_400_000));
+  const time = host.start || (host.room ? moscowDate.format(roomStart(host.room)) + "T" + interval(host.room, 0, 1).slice(0, 5) : date + "T18:30");
+  return `<div class="pv-panel">
+    <label class="pv-field">R1 start · Moscow time
+      <input class="pv-input" type="datetime-local" data-host="start" value="${esc(time)}">
+    </label><p class="pv-inline-note pv-block-gap">The opening starts 20 minutes before R1. A room sets the timetable and draws four unique markets.</p>
+    <div class="pv-actions pv-file-actions">${button("Create a new room", "host-create", "primary")}</div>
+  </div>`;
+}
+
+function activeRoom() {
+  const assignments = TEAMS.map(team => {
+    const market = MARKETS[marketForTable(host.room, team)];
+    return "<div class=\"pv-panel\"><span class=\"pv-mono\">Table " + team + "</span><strong>" + esc(market.name) +
+      "</strong><small>" + esc(market.city) + "</small></div>";
+  }).join("");
+  return `<div class="pv-record pv-checkpoint"><p class="pv-mono">Room code</p><h3>${esc(host.room)}</h3>
+    <p>Show this code and the table assignment. Each team joins with one device and its own table number.</p></div>
+    <div class="pv-host-assignments">${assignments}</div>
+    <div class="pv-panel pv-block-gap">
+      <div class="pv-clock" data-host-clock><span data-host-phase></span><strong data-host-time></strong></div>
+      <p data-host-cue class="pv-block-gap"></p>
+    </div>`;
+}
+
+function scoresFor(team) {
+  const data = host.panel.grades[team];
+  return scoreJury(data);
+}
+
+function scoresTable() {
+  const scored = TEAMS.map(team => ({team, score: scoresFor(team)}));
+  const ranked = scored.filter(item => item.score).sort((a, b) => compareScores(a.score, b.score));
+  const complete = ranked.length === TEAMS.length;
+  const tied = complete ? ranked.filter(item => compareScores(item.score, ranked[0].score) === 0) : [];
+  const heading = !complete ? "Complete all three expert sheets for every table to rank the proposals." :
+    tied.length > 1 ? "The Chair decides between tables " + tied.map(item => item.team).join(", ") + " and gives a rubric-based reason." :
+      "First launch priority · Table " + ranked[0].team + " · " + MARKETS[marketForTable(host.room, ranked[0].team)].name;
+  const rows = (complete ? ranked : scored).map(({team, score}) =>
+    "<tr><td>" + esc(MARKETS[marketForTable(host.room, team)].name) + "</td>" +
+    (score ? [score.written, score.oral, score.total].map(value => "<td>" + value.toFixed(1) + "</td>").join("") :
+      '<td colspan="3">Pending</td>') + "</tr>").join("");
+  return `<div class="pv-panel">
+    <h3>Board ranking</h3><p>${esc(heading)}</p>
+    <table class="pv-scores"><thead><tr><th scope="col">Market</th><th scope="col">Written</th><th scope="col">Oral</th><th scope="col">Total</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <div class="pv-actions pv-file-actions">${button("Export scores CSV", "host-scores")}</div></div>`;
+}
+
+function judgeTable(team) {
+  const imported = host.panel.records[team];
+  const data = host.panel.grades[team] || [];
+  const sheets = [0, 1, 2].map(expert => {
+    const grade = data[expert] || {checks: [], complete: false};
+    return disclosure("Expert " + (expert + 1) + " · " + (grade.complete ? "complete" : "draft"),
+      RUBRIC.map(([section, name, points, criteria], row) => `<fieldset class="pv-panel">
+        <legend>${esc(section + " · " + name + " · " + points / 4 + " per check")}</legend><div class="pv-checks">
+        ${criteria.map((item, index) => `<label><input type="checkbox" data-host="check" data-expert="${expert}" data-row="${row}" data-check="${index}"
+          ${grade.checks[row]?.[index] ? "checked" : ""}> ${esc(item)}</label>`).join("")}
+        </div></fieldset>`).join("") +
+      '<label class="pv-panel pv-field"><span><input type="checkbox" data-host="complete" data-expert="' + expert + '"' +
+      (grade.complete ? " checked" : "") + '> This expert sheet is complete</span></label>');
+  }).join("");
+  const teamOptions = TEAMS.map(value => '<option value="' + value + '"' + (team === value ? " selected" : "") + ">Table " + value +
+    " · " + esc(MARKETS[marketForTable(host.room, value)].name) + "</option>").join("");
+  return `<div class="pv-panel">
+    <h3>Strategy and hearing score sheets</h3>
+    <p>Collect the team JSON after R7. Review written checks during the game and preparation. Score the pitch and common answer separately. Three experts submit their four independent checks for each criterion.</p>
+    <label class="pv-field pv-block-gap">Review table<select class="pv-input" data-host="selected">${teamOptions}</select></label>
+    <div class="pv-actions pv-file-actions">${button("Import team JSON", "import", "", 'data-purpose="host"')}</div>
+    ${imported ? disclosure("Imported team journal · " + imported.history.length + "/7 decisions", '<p class="pv-worksheet-note">' + esc(textReport(imported)) + "</p>") : ""}
+    ${sheets}
+  </div>`;
+}
+
+function guide(room) {
+  const schedule = SCHEDULE.map(item =>
+    ["<li><strong>", esc(interval(room, item.from, item.to)), "</strong><span>", esc(item.label), "</span></li>"].join("")).join("");
+  return disclosure("Facilitator script and timetable", `
+    <div class="pv-wording">
+      <h3>20 minutes before R1</h3>
+      <p>Make four mixed tables. If the roster includes exchange students, privately distribute them as evenly as possible. Keep the tables balanced and run the case in English. Give the group its table number and read the Board brief without assigning student positions.</p>
+      <p>Explain credits with a sample. With 5 practice credits, buying an interview for 2 leaves 3, so a response costing 4 is unavailable. Every real team starts with 9.</p>
+      <p>Explain the deadline. A complete, affordable browser draft locks when time runs out. The free default is applied if any required draft field is missing. Keep printed round cards and one blank ledger per team for an offline fallback.</p>
+      ${facts([["Expert 1","Open the session, project the clock, warn with two minutes left and time each pitch."],
+        ["Expert 2","Support the team devices, check budgets and keep the R4 checkpoints."],
+        ["Expert 3","Read both crisis bulletins and gather journals, score sheets and Board Briefs."],
+        ["Board Chair","Give the assignment, ask the same question in each hearing and announce the decision."]])}
+      <ul class="pv-schedule">${schedule}</ul>
+      <h3>Board hearing</h3>
+      <p>Draw the order before preparation. Each team gets three minutes and one minute for this question. “${esc(QUESTION)}”</p>
+      <p>Announce the market, the preparation or implementation step funded now, and the condition for live activity. Break a total-score tie by oral score, then Uppsala score. The Chair decides any remaining tie and explains the reason.</p>
+    </div>`);
+}
+
+function renderHost() {
+  return stage("Facilitator dashboard", "Seminar operations",
+    (host.room ? activeRoom() + guide(host.room) + '<div class="pv-block-gap">' + scoresTable() + judgeTable(host.selected) + "</div>" : "") +
+    '<div class="pv-block-gap">' + (host.room ? disclosure("Set up another room", startForm()) : startForm()) + "</div>", "review");
+}
+
+function hostClock(root, now) {
+  const clock = root.querySelector("[data-host-clock]");
+  if (!clock || !host.room) return;
+  const phase = phaseAt(host.room, now);
+  const bulletin = phase.id === "R6" && !phase.bulletinB;
+  const delta = phase.to === null ? null : roomStart(host.room) + (bulletin ? 92 : phase.to) * 60_000 - now;
+  const cue = {
+    SETUP: "Create mixed tables, explain the mandate and run the practice example.",
+    R1: "Release the Singapore baseline and assigned market. Remind teams to build their own CAGE.",
+    R2: "The selected profile gets a customer signal and a choice of evidence packages.",
+    R3: "Release local candidate files and ask for learning and commitment thresholds.",
+    R4: "Explain what the scoped review buys. Save a JSON checkpoint before the break.",
+    R5: "Each profile receives a different rival move. Ask how the team now competes.",
+    R7: "Each team chooses what to fund and states the condition for its next commitment.",
+    BREAK: "Export the checkpoint, then reopen the same room and table at the next seminar.",
+    R6: bulletin ? BULLETINS.A : BULLETINS.B + " Each team sees its customer-specific note.",
+    PREP: "Collect team JSON or written logs, finish the written checks and give teams the pitch order.",
+    PITCH: "One four-minute slot per team. " + QUESTION,
+    DEBRIEF: "Reconcile all scores. Announce the selected next investment and its live-launch condition.",
+    END: "Session complete. Export the ranking and keep the team journals."
+  }[phase.id] || phase.label;
+  clock.dataset.near = delta !== null && delta <= 120_000;
+  clock.querySelector("[data-host-phase]").textContent = phase.label || phase.id;
+  clock.querySelector("[data-host-time]").textContent = delta === null ? "—" : countdown(delta);
+  root.querySelector("[data-host-cue]").textContent = cue;
+}
+
+function exportScores() {
+  const lines = ["table,market,written_70,oral_30,uppsala_16,total_100"];
+  for (const team of TEAMS) {
+    const score = scoresFor(team);
+    lines.push([team, MARKETS[marketForTable(host.room, team)].name].concat(score ?
+      [score.written, score.oral, score.uppsala, score.total] : ["","","",""]).join(","));
+  }
+  saveFile("revolut-" + host.room.toLowerCase() + "-scores.csv", lines.join("\n") + "\n", "text/csv;charset=utf-8");
+}
+
+async function handleHostAction(id, target, ui) {
+  if (id === "host-create") {
+    const start = target.closest(".pv-panel").querySelector('[data-host="start"]').value;
+    const instant = Date.parse(start + "+03:00");
+    if (!start || !Number.isFinite(instant)) throw new Error("Set a valid R1 start in Moscow time.");
+    const random = crypto.getRandomValues(new Uint32Array(2));
+    const next = makeRoom(instant, random[0] % 24, (random[1] % 46656).toString(36).padStart(3, "0"));
+    if (roomStart(next) === null) throw new Error("Select a date between 2025 and 2099.");
+    if (host.room && !await ui.ask("Switch to a new room?", "The current room’s exports can still be kept. The dashboard will open the new room.", "Create room")) return;
+    host.room = next;
+    host.start = start;
+    host.selected = 1;
+    host.panel = freshPanel();
+    storePanel();
+    ui.announce("Room created. Show the room code and table numbers to participants.");
+    ui.render("#omf-stage-title");
+  } else if (id === "host-scores") exportScores();
+}
+
+function updateHostField(input, render) {
+  const {host: field} = input.dataset;
+  if (field === "start") {
+    host.start = input.value;
+    return;
+  }
+  if (!host.room || !render) return;
+  if (field === "selected") {
+    host.selected = Number(input.value);
+    render();
+    return;
+  }
+  if (field !== "check" && field !== "complete") return;
+  const team = host.selected;
+  const expert = Number(input.dataset.expert);
+  const grades = host.panel.grades[team] || [{checks: []}, {checks: []}, {checks: []}];
+  const grade = grades[expert];
+  if (field === "complete") grade.complete = input.checked;
+  else {
+    const row = Number(input.dataset.row);
+    grade.checks[row] ||= [];
+    grade.checks[row][Number(input.dataset.check)] = input.checked;
+    grade.complete = false;
+    input.closest("details").querySelector('[data-host="complete"]').checked = false;
+  }
+  input.closest("details").querySelector("summary").textContent = "Expert " + (expert + 1) + " · " + (grade.complete ? "complete" : "draft");
+  host.panel.grades[team] = grades;
+  storePanel();
+  const previous = input.closest(".pv-stage-body").querySelector(".pv-scores").closest(".pv-panel");
+  previous.outerHTML = scoresTable();
+}
+
+async function importTeamFile(file, ui) {
+  if (!host.room) throw new Error("Create a room first.");
+  if (file.size > CONFIG.maxImportBytes) throw new Error("The JSON file is too large.");
+  let parsed;
+  try { parsed = JSON.parse(await file.text()); }
+  catch { throw new Error("Choose a JSON file exported by the game."); }
+  const record = validateRecord(parsed);
+  if (record.room !== host.room) throw new Error("This team file belongs to another room.");
+  const current = host.panel.records[record.team];
+  if (current && !await ui.ask("Replace the imported journal?", "Import the selected file for table " + record.team + "?", "Import")) return;
+  host.panel.records[record.team] = record;
+  host.selected = record.team;
+  storePanel();
+  ui.announce("Imported table " + record.team + " with " + record.history.length + "/7 locked decisions.");
+  ui.render();
+}
+
+return {
+  CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION, SCHEDULE, TEAMS, OUTCOMES,
+  makeRoom, roomStart, marketForTable, phaseAt, optionsFor, pendingFact, isDraftComplete, replay, settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, validateRecord,
+  storageAvailable, getStored, putStored, teamKey, readSlot, storeRecord, activeTeam, newId, newRecord, withSaveLock, knownTable,
+  esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename,
+  renderHost, hostClock, handleHostAction, updateHostField, importTeamFile
+};
+})();
+</script>
