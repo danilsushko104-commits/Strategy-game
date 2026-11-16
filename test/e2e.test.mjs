@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // Browser tests of the generated page. They need Playwright and are skipped where it is not installed.
 let chromium = null;
@@ -9,15 +12,15 @@ try { ({chromium} = createRequire(import.meta.url)("playwright")); } catch { /* 
 const skip = !chromium && "Playwright is not installed";
 const pageUrl = "file://" + fileURLToPath(new URL("../one-market-first.html", import.meta.url));
 
-async function withPage(run) {
+async function withPage(run, url = pageUrl, allowed = []) {
   const browser = await chromium.launch();
   try {
     const context = await browser.newContext({viewport: {width: 1280, height: 900}, acceptDownloads: true});
     const page = await context.newPage();
     const problems = [];
-    page.on("console", message => { if (["error", "warning"].includes(message.type())) problems.push(message.text()); });
+    page.on("console", message => { if (["error", "warning"].includes(message.type()) && !allowed.some(pattern => pattern.test(message.text()))) problems.push(message.text()); });
     page.on("pageerror", error => problems.push(error.message));
-    await page.goto(pageUrl);
+    await page.goto(url);
     await run(page);
     assert.deepEqual(problems, []);
   } finally {
@@ -90,4 +93,63 @@ test("A live table mirrors its save into IndexedDB and tracks the downloaded bac
     assert.match(await page.locator(".pv-checkpoint .pv-backup").innerText(), /The backup is current \(after R1/);
     assert.equal(await page.locator(".pv-checkpoint .pv-backup").getAttribute("data-backup-state"), "ok");
   });
+});
+
+const SHEET = "https://script.google.com/macros/s/TEST/exec";
+
+// The built page with a sheet address filled in, the way the facilitator edits the Tilda block.
+function pageWithSheet() {
+  const copy = join(mkdtempSync(join(tmpdir(), "omf-")), "game.html");
+  const html = readFileSync(fileURLToPath(new URL("../one-market-first.html", import.meta.url)), "utf8");
+  assert.ok(html.includes('data-sync-url=""'));
+  writeFileSync(copy, html.replace('data-sync-url=""', 'data-sync-url="' + SHEET + '"'));
+  return "file://" + copy;
+}
+
+async function openLiveTable(page) {
+  const moscow = new Date(Date.now() - 5 * 60_000 + 3 * 3_600_000).toISOString().slice(0, 16);
+  await page.click("button[data-action=host]");
+  await page.fill('[data-host="start"]', moscow);
+  await page.click('button:has-text("Create a new room")');
+  const room = await page.locator(".pv-record h3").first().innerText();
+  await page.click("button[data-action=home]");
+  await page.fill('input[data-entry="room"]', room);
+  await page.click('button:has-text("Open team dashboard")');
+  return room;
+}
+
+test("Locked decisions reach the sheet, survive an outage and are sent again on request", {skip}, async () => {
+  const received = [];
+  let online = false;
+  await withPage(async page => {
+    await page.route(SHEET, async route => {
+      if (!online) return route.abort("failed");
+      const payload = JSON.parse(route.request().postData());
+      received.push(...payload.events);
+      await route.fulfill({
+        status: 200, contentType: "application/json", headers: {"access-control-allow-origin": "*"},
+        body: JSON.stringify({ok: true, saved: payload.events.map(event => event.id), duplicates: []})
+      });
+    });
+    const room = await openLiveTable(page);
+    await page.locator(".pv-sync").first().waitFor();
+
+    // 1) Offline: the decision locks locally and waits.
+    await lockCurrentRound(page);
+    await page.locator('.pv-checkpoint .pv-sync[data-sync-state="retry"]').waitFor();
+    assert.match(await page.locator(".pv-checkpoint .pv-sync").innerText(), /1 decision is waiting to be sent/);
+    assert.equal(received.length, 0);
+
+    // 2) Back online: "Send again" delivers it.
+    online = true;
+    await page.click('.pv-checkpoint .pv-sync button:has-text("Send again")');
+    await page.locator('.pv-checkpoint .pv-sync[data-sync-state="ok"]').waitFor();
+    assert.match(await page.locator(".pv-checkpoint .pv-sync").innerText(), /all 1 decision is saved/);
+    assert.equal(received.length, 1);
+    assert.equal(received[0].room, room);
+    assert.equal(received[0].team, 1);
+    assert.equal(received[0].round, "R1");
+    assert.equal(received[0].evidence, "evidence");
+    assert.match(received[0].id, new RegExp("^" + room + ":1:0:"));
+  }, pageWithSheet(), [/net::ERR_FAILED/]); // the outage is simulated by aborting the request
 });

@@ -6,6 +6,7 @@ import { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot,
 import { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename } from './presentation.mjs';
 import { renderHost, handleHostAction, updateHostField, importTeamFile, hostClock } from './host.mjs';
 import { trueNow, clockStatus, syncClock } from './clock.mjs';
+import { configureSync, flushSync, syncSummary } from './sync.mjs';
 
 const root = document.querySelector("#one-market-first");
 const ui = Object.fromEntries([...root.querySelectorAll("[data-ui]")].map(element => [element.dataset.ui, element]));
@@ -13,6 +14,7 @@ const view = {
   page: "home", entryMode: "live", room: "", team: 1, market: "indonesia", record: null,
   pageKey: "", recovery: null, practiceReview: null, notice: "", readingFor: "team", busy: false, writes: Promise.resolve()
 };
+configureSync(root.dataset.syncUrl);
 const marketList = Object.entries(MARKETS);
 const scheduledRoom = makeRoom(Date.UTC(2026, 0, 1, 15, 30), 0, "000");
 
@@ -199,7 +201,7 @@ function roundScreen(round, state, record, phase, lastEvent) {
     const note = lastEvent.method === "default" ? "Default recorded" : "Decision locked";
     return stage(title, label, `<div class="pv-record"><p class="pv-mono">${note}</p><h3>${esc(lastEvent.label)}</h3>
         <p>${esc(lastEvent.result)}</p><p>${lastEvent.cost} spent · ${lastEvent.credits} remaining</p></div>
-      ${record.mode === "live" ? '<div class="pv-panel pv-checkpoint"><strong>' + (round.id === "R4" ? "Save your checkpoint before the break." : "Save a backup copy.") + "</strong>" + backupLine(record) +
+      ${record.mode === "live" ? '<div class="pv-panel pv-checkpoint"><strong>' + (round.id === "R4" ? "Save your checkpoint before the break." : "Save a backup copy.") + "</strong>" + backupLine(record) + syncLine(record) +
         '<div class="pv-file-actions">' + button("Download backup JSON", "export-json") + "</div></div>" : ""}
       ${disclosure("Team worksheet", worksheet(round, record), true)}
       <div class="pv-commit">${next}</div>`, "review");
@@ -267,7 +269,7 @@ function renderTeam(now) {
     <div class="pv-layout"><div>${body}</div><aside class="pv-sidebar">
       <section class="pv-sidebar-card"><h3>Decision journal</h3>${logList(path)}
         <div class="pv-file-actions pv-actions">${button("Journal TXT", "export-txt")}${button("Save JSON", "export-json")}</div>
-        ${backupLine(record)}
+        ${backupLine(record)}${syncLine(record)}
       </section>
       <section class="pv-sidebar-card"><h3>Team materials</h3>
         ${disclosure("Market dossier", marketDossier(market, state.profile))}
@@ -374,6 +376,29 @@ function refreshBackup() {
   }
 }
 
+function syncLine(record) {
+  const summary = record.mode === "live" ? syncSummary() : null;
+  if (!summary) return "";
+  return '<p class="pv-backup pv-sync" data-sync-state="' + summary.state + '"><span data-sync-text>' + esc(summary.text) + "</span> " +
+    button("Send again", "sync-now", "text") + "</p>";
+}
+
+function refreshSync() {
+  const summary = syncSummary();
+  if (!summary) return;
+  for (const element of root.querySelectorAll("[data-sync-state]")) {
+    element.dataset.syncState = summary.state;
+    element.querySelector("[data-sync-text]").textContent = summary.text;
+  }
+}
+
+function triggerSync(force = false) {
+  if (view.page !== "team" || !view.record) return Promise.resolve();
+  const job = flushSync(view.record, {force});
+  refreshSync();
+  return job.then(refreshSync, refreshSync);
+}
+
 function teamKeyForView(now) {
   const phase = recordPhase(now);
   return phase.id + ":" + Number(phase.bulletinB) + ":" + view.record.history.length;
@@ -400,6 +425,7 @@ function showTeam(record, message = "") {
   announce((message + stale).trim(), stale ? "warning" : "info");
   render("#omf-stage-title");
   void requestPersistence().then(refreshBackup);
+  void triggerSync();
 }
 
 async function join() {
@@ -434,6 +460,7 @@ function saveChange(change, now = trueNow()) {
     const next = change(settled, now);
     if (next !== settled) storeRecord(next);
     if (view.record?.session === expected.session) view.record = next;
+    if (next.history.length !== current.history.length) setTimeout(() => void triggerSync(), 0);
     return next;
   }));
   view.writes = job.catch(() => {});
@@ -544,6 +571,7 @@ const controls = {
     render("#omf-stage-title");
   },
   "practice-default": () => submitRound(ROUNDS[view.record.history.length].id, true),
+  "sync-now": () => triggerSync(true),
   "recover-pick": target => {
     const option = view.recovery?.options[Number(target.dataset.index)];
     if (option) return restoreRecord(option.record, "Restored the " + option.source + ".", false);
@@ -632,6 +660,9 @@ window.addEventListener("storage", event => {
 });
 
 let previousHostTick = 0;
+setInterval(() => void triggerSync(), 30_000);
+window.addEventListener("online", () => void triggerSync());
+
 let previousBackupTick = 0;
 setInterval(() => {
   if (view.page === "team") {
@@ -671,3 +702,4 @@ if (knownTable(last)) {
   }
 }
 render();
+void triggerSync();

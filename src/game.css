@@ -585,3 +585,9 @@
 #one-market-first .pv-backup[data-backup-state="late"] { border-left-color: var(--pv-negative); color: var(--pv-negative); font-weight: 700; }
 #one-market-first .pv-recovery { margin: 12px 0; padding-left: 18px; }
 #one-market-first .pv-recovery li { margin: 0 0 10px; overflow-wrap: anywhere; }
+
+/* Google Sheets status line: the "Send again" button only matters when something is waiting */
+#one-market-first .pv-sync .pv-button { display: none; margin-left: 6px; }
+#one-market-first .pv-sync:is([data-sync-state="retry"], [data-sync-state="unconfirmed"]) { border-left-color: var(--pv-orange); }
+#one-market-first .pv-sync:is([data-sync-state="retry"], [data-sync-state="unconfirmed"]) .pv-button { display: inline-block; }
+#one-market-first .pv-sync[data-sync-state="ok"] { border-left-color: var(--pv-blue); }

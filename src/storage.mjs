@@ -48,6 +48,10 @@ function backupKey(room, team) {
   return prefix + ":" + room + ":backup:" + team;
 }
 
+function syncKey(room, team) {
+  return prefix + ":" + room + ":sync:" + team;
+}
+
 const SNAPSHOTS = ["bak1", "bak2"];
 
 // A save that cannot be opened. The app offers recovery instead of a dead end.
@@ -114,7 +118,7 @@ export function storeRecord(record) {
 
 export function clearSlot(room, team) {
   const key = teamKey(room, team);
-  for (const name of [key, ...SNAPSHOTS.map(slot => key + ":" + slot), backupKey(room, team)]) {
+  for (const name of [key, ...SNAPSHOTS.map(slot => key + ":" + slot), backupKey(room, team), syncKey(room, team)]) {
     putStored(name, null);
     void mirrorPut(name, null);
   }
@@ -229,6 +233,20 @@ export function readBackup(room, team) {
 
 export function markBackup(room, team, rounds, at) {
   putStored(backupKey(room, team), JSON.stringify({rounds, at}));
+}
+
+// How many of a table's decisions the remote log has confirmed, for one endpoint.
+export function readSynced(room, team, endpoint) {
+  try {
+    const value = JSON.parse(getStored(syncKey(room, team)));
+    return value?.endpoint === endpoint && Number.isInteger(value.count) && value.count >= 0 ? value.count : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function writeSynced(room, team, endpoint, count) {
+  putStored(syncKey(room, team), JSON.stringify({endpoint, count}));
 }
 
 // How far the last downloaded backup trails behind the locked decisions.

@@ -587,9 +587,15 @@
 #one-market-first .pv-backup[data-backup-state="late"] { border-left-color: var(--pv-negative); color: var(--pv-negative); font-weight: 700; }
 #one-market-first .pv-recovery { margin: 12px 0; padding-left: 18px; }
 #one-market-first .pv-recovery li { margin: 0 0 10px; overflow-wrap: anywhere; }
+
+/* Google Sheets status line: the "Send again" button only matters when something is waiting */
+#one-market-first .pv-sync .pv-button { display: none; margin-left: 6px; }
+#one-market-first .pv-sync:is([data-sync-state="retry"], [data-sync-state="unconfirmed"]) { border-left-color: var(--pv-orange); }
+#one-market-first .pv-sync:is([data-sync-state="retry"], [data-sync-state="unconfirmed"]) .pv-button { display: inline-block; }
+#one-market-first .pv-sync[data-sync-state="ok"] { border-left-color: var(--pv-blue); }
 </style>
 
-<section id="one-market-first" lang="en" aria-label="Revolut — One Market First">
+<section id="one-market-first" lang="en" aria-label="Revolut — One Market First" data-sync-url="">
   <header class="pv-top">
     <div class="pv-shell pv-top-inner">
       <div class="pv-brand">
@@ -1515,6 +1521,10 @@ function backupKey(room, team) {
   return prefix + ":" + room + ":backup:" + team;
 }
 
+function syncKey(room, team) {
+  return prefix + ":" + room + ":sync:" + team;
+}
+
 const SNAPSHOTS = ["bak1", "bak2"];
 
 // A save that cannot be opened. The app offers recovery instead of a dead end.
@@ -1581,7 +1591,7 @@ function storeRecord(record) {
 
 function clearSlot(room, team) {
   const key = teamKey(room, team);
-  for (const name of [key, ...SNAPSHOTS.map(slot => key + ":" + slot), backupKey(room, team)]) {
+  for (const name of [key, ...SNAPSHOTS.map(slot => key + ":" + slot), backupKey(room, team), syncKey(room, team)]) {
     putStored(name, null);
     void mirrorPut(name, null);
   }
@@ -1698,6 +1708,20 @@ function markBackup(room, team, rounds, at) {
   putStored(backupKey(room, team), JSON.stringify({rounds, at}));
 }
 
+// How many of a table's decisions the remote log has confirmed, for one endpoint.
+function readSynced(room, team, endpoint) {
+  try {
+    const value = JSON.parse(getStored(syncKey(room, team)));
+    return value?.endpoint === endpoint && Number.isInteger(value.count) && value.count >= 0 ? value.count : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeSynced(room, team, endpoint, count) {
+  putStored(syncKey(room, team), JSON.stringify({endpoint, count}));
+}
+
 // How far the last downloaded backup trails behind the locked decisions.
 function backupBehind(decisions, backup) {
   return Math.max(0, decisions - (backup?.rounds ?? 0));
@@ -1732,7 +1756,125 @@ function withSaveLock(key, change) {
 function knownTable(value) {
   return value && TEAMS.includes(value.team) && (value.room === "PRACTICE" || roomStart(value.room) !== null);
 }
-return { storageAvailable, getStored, putStored, teamKey, hostKey, SaveError, readSlot, storeRecord, clearSlot, mirrorPut, mirrorGet, mirrorStatus, recoveryOptions, requestPersistence, persistenceState, readBackup, markBackup, backupBehind, activeTeam, newId, newRecord, withSaveLock, knownTable };
+return { storageAvailable, getStored, putStored, teamKey, hostKey, SaveError, readSlot, storeRecord, clearSlot, mirrorPut, mirrorGet, mirrorStatus, recoveryOptions, requestPersistence, persistenceState, readBackup, markBackup, readSynced, writeSynced, backupBehind, activeTeam, newId, newRecord, withSaveLock, knownTable };
+})();
+
+// src/sync.mjs
+const __omf_sync = (() => {
+const { replay } = __omf_rules;
+const { hash53 } = __omf_hash;
+const { trueNow, clockStatus } = __omf_clock;
+const { readSynced, writeSynced } = __omf_storage;
+// Optional second copy of every locked decision in a Google Sheet (Apps Script web app).
+// The game never depends on it: decisions are always saved locally first, the number of confirmed
+// decisions is remembered per table, and a failed send is simply retried with the same events.
+// Events carry a deterministic id, so the sheet can drop duplicates and a re-send is always safe.
+
+const SEPARATOR = "␟";
+const state = {endpoint: "", status: "off", total: 0, pending: 0, error: ""};
+let sending = null;
+
+function configureSync(url) {
+  const endpoint = String(url || "").trim();
+  state.endpoint = /^https:\/\/[^\s]+$/.test(endpoint) ? endpoint : "";
+  state.status = state.endpoint ? "idle" : "off";
+  state.error = "";
+}
+
+function syncStatus() {
+  return {...state};
+}
+
+// One event per locked decision. Each carries a chain hash over everything locked before it,
+// so a decision that was rewritten later produces a different chain for the same round.
+function buildEvents(record) {
+  const {path} = replay(record);
+  let chain = "";
+  return record.history.map((event, seq) => {
+    const body = [record.room, record.team, seq, event.round, event.choice, event.method, event.at, event.evidence, event.tradeoff].join(SEPARATOR);
+    chain = hash53(chain + SEPARATOR + body);
+    const step = path[seq];
+    return {
+      id: record.room + ":" + record.team + ":" + seq + ":" + chain,
+      room: record.room, team: record.team, market: record.market, session: record.session, seq,
+      round: event.round, choice: event.choice, method: event.method, label: step.label, cost: step.cost, credits: step.credits,
+      clientTime: event.at, evidence: event.evidence, tradeoff: event.tradeoff, chain, content: record.content || ""
+    };
+  });
+}
+
+// The leading run of events that the sheet reports as stored (or already there).
+function confirmedPrefix(events, reply) {
+  const known = new Set([...(reply.saved || []), ...(reply.duplicates || [])]);
+  let count = 0;
+  while (count < events.length && known.has(events[count].id)) count++;
+  return count;
+}
+
+async function transmit(events, request) {
+  const body = JSON.stringify({
+    v: 1, sentAt: new Date(trueNow()).toISOString(), clockOffsetMs: Math.round(clockStatus().offset), events
+  });
+  const options = {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, body, redirect: "follow"};
+  try {
+    const response = await request(state.endpoint, options);
+    if (!response.ok) throw new Error("The sheet answered with status " + response.status + ".");
+    const reply = await response.json();
+    if (!reply?.ok) throw new Error(reply?.error || "The sheet rejected the request.");
+    return {confirmed: confirmedPrefix(events, reply), readable: true, rejected: reply.rejected || []};
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error;
+    // Offline, or the reply cannot be read from this origin. A request without a readable reply
+    // can still reach the sheet: send once more as an opaque request and report it as unconfirmed.
+    await request(state.endpoint, {...options, mode: "no-cors"});
+    return {confirmed: events.length, readable: false, rejected: []};
+  }
+}
+
+async function run(record, request, force) {
+  try {
+    const events = buildEvents(record);
+    const done = force ? 0 : readSynced(record.room, record.team, state.endpoint);
+    const unsent = events.slice(done);
+    state.total = events.length;
+    state.pending = unsent.length;
+    if (!unsent.length) {
+      state.status = events.length ? (state.status === "unconfirmed" ? "unconfirmed" : "ok") : "idle";
+      return syncStatus();
+    }
+    state.status = "sending";
+    const result = await transmit(unsent, request);
+    writeSynced(record.room, record.team, state.endpoint, done + result.confirmed);
+    state.pending = unsent.length - result.confirmed;
+    state.error = result.rejected.length ? "The sheet rejected " + result.rejected.length + " decision(s)." : "";
+    state.status = state.pending ? "retry" : result.readable ? "ok" : "unconfirmed";
+  } catch (error) {
+    state.status = "retry";
+    state.error = error.message || "The sheet could not be reached.";
+  }
+  return syncStatus();
+}
+
+// Sends every decision the sheet has not confirmed yet. Safe to call as often as needed;
+// a call that arrives while one is running joins it.
+function flushSync(record, {request = globalThis.fetch, force = false} = {}) {
+  if (!state.endpoint || record.mode !== "live") return Promise.resolve(syncStatus());
+  if (!sending) sending = run(record, request, force).finally(() => { sending = null; });
+  return sending;
+}
+
+function syncSummary() {
+  const {status, total, pending, error} = state;
+  const text = {
+    ok: "Google Sheets: all " + total + (total === 1 ? " decision is" : " decisions are") + " saved.",
+    sending: "Google Sheets: sending…",
+    idle: "Google Sheets: connected. Decisions are sent when they are locked.",
+    unconfirmed: "Google Sheets: sent, but the browser cannot read the reply. Check the sheet, or send again.",
+    retry: "Google Sheets: " + pending + (pending === 1 ? " decision is" : " decisions are") + " waiting to be sent. Retrying automatically." + (error ? " (" + error + ")" : "")
+  }[status];
+  return text ? {state: status, text} : null;
+}
+return { configureSync, syncStatus, buildEvents, flushSync, syncSummary };
 })();
 
 // src/presentation.mjs
@@ -2078,12 +2220,14 @@ const { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot, 
 const { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename } = __omf_presentation;
 const { renderHost, handleHostAction, updateHostField, importTeamFile, hostClock } = __omf_host;
 const { trueNow, clockStatus, syncClock } = __omf_clock;
+const { configureSync, flushSync, syncSummary } = __omf_sync;
 const root = document.querySelector("#one-market-first");
 const ui = Object.fromEntries([...root.querySelectorAll("[data-ui]")].map(element => [element.dataset.ui, element]));
 const view = {
   page: "home", entryMode: "live", room: "", team: 1, market: "indonesia", record: null,
   pageKey: "", recovery: null, practiceReview: null, notice: "", readingFor: "team", busy: false, writes: Promise.resolve()
 };
+configureSync(root.dataset.syncUrl);
 const marketList = Object.entries(MARKETS);
 const scheduledRoom = makeRoom(Date.UTC(2026, 0, 1, 15, 30), 0, "000");
 
@@ -2299,7 +2443,7 @@ function roundScreen(round, state, record, phase, lastEvent) {
     const note = lastEvent.method === "default" ? "Default recorded" : "Decision locked";
     return stage(title, label, `<div class="pv-record"><p class="pv-mono">${note}</p><h3>${esc(lastEvent.label)}</h3>
         <p>${esc(lastEvent.result)}</p><p>${lastEvent.cost} spent · ${lastEvent.credits} remaining</p></div>
-      ${record.mode === "live" ? '<div class="pv-panel pv-checkpoint"><strong>' + (round.id === "R4" ? "Save your checkpoint before the break." : "Save a backup copy.") + "</strong>" + backupLine(record) +
+      ${record.mode === "live" ? '<div class="pv-panel pv-checkpoint"><strong>' + (round.id === "R4" ? "Save your checkpoint before the break." : "Save a backup copy.") + "</strong>" + backupLine(record) + syncLine(record) +
         '<div class="pv-file-actions">' + button("Download backup JSON", "export-json") + "</div></div>" : ""}
       ${disclosure("Team worksheet", worksheet(round, record), true)}
       <div class="pv-commit">${next}</div>`, "review");
@@ -2367,7 +2511,7 @@ function renderTeam(now) {
     <div class="pv-layout"><div>${body}</div><aside class="pv-sidebar">
       <section class="pv-sidebar-card"><h3>Decision journal</h3>${logList(path)}
         <div class="pv-file-actions pv-actions">${button("Journal TXT", "export-txt")}${button("Save JSON", "export-json")}</div>
-        ${backupLine(record)}
+        ${backupLine(record)}${syncLine(record)}
       </section>
       <section class="pv-sidebar-card"><h3>Team materials</h3>
         ${disclosure("Market dossier", marketDossier(market, state.profile))}
@@ -2474,6 +2618,29 @@ function refreshBackup() {
   }
 }
 
+function syncLine(record) {
+  const summary = record.mode === "live" ? syncSummary() : null;
+  if (!summary) return "";
+  return '<p class="pv-backup pv-sync" data-sync-state="' + summary.state + '"><span data-sync-text>' + esc(summary.text) + "</span> " +
+    button("Send again", "sync-now", "text") + "</p>";
+}
+
+function refreshSync() {
+  const summary = syncSummary();
+  if (!summary) return;
+  for (const element of root.querySelectorAll("[data-sync-state]")) {
+    element.dataset.syncState = summary.state;
+    element.querySelector("[data-sync-text]").textContent = summary.text;
+  }
+}
+
+function triggerSync(force = false) {
+  if (view.page !== "team" || !view.record) return Promise.resolve();
+  const job = flushSync(view.record, {force});
+  refreshSync();
+  return job.then(refreshSync, refreshSync);
+}
+
 function teamKeyForView(now) {
   const phase = recordPhase(now);
   return phase.id + ":" + Number(phase.bulletinB) + ":" + view.record.history.length;
@@ -2500,6 +2667,7 @@ function showTeam(record, message = "") {
   announce((message + stale).trim(), stale ? "warning" : "info");
   render("#omf-stage-title");
   void requestPersistence().then(refreshBackup);
+  void triggerSync();
 }
 
 async function join() {
@@ -2534,6 +2702,7 @@ function saveChange(change, now = trueNow()) {
     const next = change(settled, now);
     if (next !== settled) storeRecord(next);
     if (view.record?.session === expected.session) view.record = next;
+    if (next.history.length !== current.history.length) setTimeout(() => void triggerSync(), 0);
     return next;
   }));
   view.writes = job.catch(() => {});
@@ -2644,6 +2813,7 @@ const controls = {
     render("#omf-stage-title");
   },
   "practice-default": () => submitRound(ROUNDS[view.record.history.length].id, true),
+  "sync-now": () => triggerSync(true),
   "recover-pick": target => {
     const option = view.recovery?.options[Number(target.dataset.index)];
     if (option) return restoreRecord(option.record, "Restored the " + option.source + ".", false);
@@ -2732,6 +2902,9 @@ window.addEventListener("storage", event => {
 });
 
 let previousHostTick = 0;
+setInterval(() => void triggerSync(), 30_000);
+window.addEventListener("online", () => void triggerSync());
+
 let previousBackupTick = 0;
 setInterval(() => {
   if (view.page === "team") {
@@ -2771,6 +2944,7 @@ if (knownTable(last)) {
   }
 }
 render();
+void triggerSync();
 })();
 })();
 </script>
