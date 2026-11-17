@@ -24,13 +24,17 @@ const html = text => String(text).replaceAll("&", "&amp;").replaceAll("<", "&lt;
 
 function sheetsView(backend) {
   backend.script.ensureSheets();
+  // Every sheet as it is laid out: row by row, cell by cell, with the column letters of Google Sheets.
+  const letter = index => String.fromCharCode(65 + index);
   const section = name => {
-    const rows = backend.table(name);
-    const columns = rows.length ? Object.keys(rows[0]) : [];
+    const sheet = backend.spreadsheet.getSheetByName(name);
+    const rows = Array.from(sheet?.rows ?? [], row => row ?? []);
+    const width = Math.max(0, ...rows.map(row => row.length));
     const cellText = value => value instanceof Date ? value.toISOString().replace("T", " ").slice(0, 19) : value;
-    return `<h2>${name} <small>${rows.length} row(s)</small></h2>` + (rows.length ?
-      `<table><thead><tr>${columns.map(column => `<th>${html(column)}</th>`).join("")}</tr></thead><tbody>${rows.map(row =>
-        "<tr>" + columns.map(column => `<td>${html(cellText(row[column]))}</td>`).join("") + "</tr>").join("")}</tbody></table>` : "<p>No data yet.</p>");
+    const used = rows.map((row, index) => [index + 1, row]).filter(([, row]) => row.some(value => value !== ""));
+    return `<h2>${name} <small>${used.length} row(s)</small></h2>` + (used.length ?
+      `<table><thead><tr><th></th>${Array.from({length: width}, (_, index) => `<th>${letter(index)}</th>`).join("")}</tr></thead><tbody>${used.map(([number, row]) =>
+        `<tr><th>${number}</th>` + Array.from({length: width}, (_, index) => `<td>${html(cellText(row[index] ?? ""))}</td>`).join("") + "</tr>").join("")}</tbody></table>` : "<p>No data yet.</p>");
   };
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="5"><title>Local Google Sheets stand-in</title>
 <style>body{font:14px/1.4 Arial,sans-serif;margin:20px;background:#f5efe3;color:#1b1829}h1{margin:0 0 4px}h2{margin:24px 0 6px}small{color:#5e5669;font-weight:400}
