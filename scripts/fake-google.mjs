@@ -77,6 +77,19 @@ export function createBackend({token = ""} = {}) {
       }
       return reply(context.doPost({postData: {contents: body}}));
     },
+    // The whole spreadsheet as text and back, so that a local game survives a restart of the server.
+    snapshot() {
+      return JSON.stringify({sheets: [...spreadsheet.sheets.values()].map(sheet => ({name: sheet.name, rows: Array.from(sheet.rows, row => row ?? null)}))},
+        function (key, value) { const raw = this[key]; return raw instanceof Date ? {$date: raw.toISOString()} : value; });
+    },
+    restore(text) {
+      const data = JSON.parse(text, (key, value) => (value && typeof value === "object" && "$date" in value ? new Date(value.$date) : value));
+      for (const {name, rows} of data.sheets) {
+        const sheet = spreadsheet.getSheetByName(name) ?? spreadsheet.insertSheet(name);
+        sheet.rows = [];
+        rows.forEach((row, index) => { if (row) sheet.rows[index] = row; });
+      }
+    },
     // The rows of a sheet as objects, for assertions and for looking at the data.
     table(name) {
       const sheet = spreadsheet.getSheetByName(name);

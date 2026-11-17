@@ -1,7 +1,9 @@
 import http from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFileSync, existsSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { networkInterfaces } from 'node:os';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createBackend } from './fake-google.mjs';
 
 // A tiny local web server for trying the game in a browser (no dependencies).
@@ -13,6 +15,7 @@ import { createBackend } from './fake-google.mjs';
 //   node scripts/serve.mjs --lan                 also reachable from phones on the same Wi-Fi
 //   node scripts/serve.mjs --sync-url=https://script.google.com/macros/s/…/exec     use your real Google Sheet instead
 //   node scripts/serve.mjs --no-sheets           practice only, no Google Sheets at all
+//   node scripts/serve.mjs --data=none           do not save the local spreadsheet (default: local-data/sheets.json)
 //
 // It serves the built page only (run `node scripts/build.mjs` after changing src/). Served over http the
 // game can synchronize its clock with this server's Date header, exactly as it does on Tilda.
@@ -32,20 +35,47 @@ function sheetsView(backend) {
     const width = Math.max(0, ...rows.map(row => row.length));
     const cellText = value => value instanceof Date ? value.toISOString().replace("T", " ").slice(0, 19) : value;
     const used = rows.map((row, index) => [index + 1, row]).filter(([, row]) => row.some(value => value !== ""));
-    return `<h2>${name} <small>${used.length} row(s)</small></h2>` + (used.length ?
+    return `<h2>${name} <small>${used.length} row(s) · <a href="/sheets/export?sheet=${encodeURIComponent(name)}">download CSV</a></small></h2>` + (used.length ?
       `<table><thead><tr><th></th>${Array.from({length: width}, (_, index) => `<th>${letter(index)}</th>`).join("")}</tr></thead><tbody>${used.map(([number, row]) =>
         `<tr><th>${number}</th>` + Array.from({length: width}, (_, index) => `<td>${html(cellText(row[index] ?? ""))}</td>`).join("") + "</tr>").join("")}</tbody></table>` : "<p>No data yet.</p>");
   };
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="5"><title>Local Google Sheets stand-in</title>
 <style>body{font:14px/1.4 Arial,sans-serif;margin:20px;background:#f5efe3;color:#1b1829}h1{margin:0 0 4px}h2{margin:24px 0 6px}small{color:#5e5669;font-weight:400}
 table{border-collapse:collapse;background:#fffaf0}th,td{border:1px solid #c8c0b4;padding:4px 8px;text-align:left;vertical-align:top;max-width:340px;overflow-wrap:anywhere}th{background:#dcd8ff}</style></head>
-<body><h1>Local Google Sheets stand-in</h1><p>The real Code.gs runs on an in-memory spreadsheet. This page refreshes every 5 seconds. Data is lost when the server stops.</p>
+<body><h1>Local Google Sheets stand-in</h1><p>The real Code.gs runs on a local spreadsheet. This page refreshes every 5 seconds. The data is saved in local-data/sheets.json and survives a restart; to start from zero use “Start a new game” in the facilitator panel or delete that file.</p>
 ${SHEET_ORDER.map(section).join("")}</body></html>`;
+}
+
+// A sheet as CSV (UTF-8 with a BOM, which makes Excel read it correctly).
+function sheetCsv(backend, name) {
+  const sheet = backend.spreadsheet.getSheetByName(name);
+  if (!sheet) return null;
+  const cell = value => {
+    const text = value instanceof Date ? value.toISOString().replace("T", " ").slice(0, 19) : String(value ?? "");
+    return /[",\r\n]/.test(text) ? '"' + text.replaceAll('"', '""') + '"' : text;
+  };
+  const rows = Array.from(sheet.rows, row => row ?? []);
+  const width = Math.max(0, ...rows.map(row => row.length));
+  return "\ufeff" + rows.map(row => Array.from({length: width}, (_, index) => cell(row[index])).join(",")).join("\r\n") + "\r\n";
 }
 
 export function createServer({syncUrl = "", fakeSheets = null} = {}) {
   if (syncUrl && !/^(https:\/\/\S+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/\S*)$/.test(syncUrl)) throw new Error("--sync-url must be an https address.");
   const backend = fakeSheets ? createBackend({token: fakeSheets.password}) : null;
+  // With a file the local spreadsheet is kept between restarts (and written after every change).
+  const file = fakeSheets?.file ?? "";
+  if (backend && file && existsSync(file)) {
+    try { backend.restore(readFileSync(file, "utf8")); } catch (error) { console.error("The saved data in " + file + " could not be read: " + error.message); }
+  }
+  let saving = null;
+  const save = () => {
+    if (!backend || !file || saving) return;
+    saving = setTimeout(async () => {
+      saving = null;
+      try { await mkdir(dirname(file), {recursive: true}); await writeFile(file, backend.snapshot(), "utf8"); }
+      catch (error) { console.error("Could not save " + file + ": " + error.message); }
+    }, 300);
+  };
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url, "http://localhost");
     const path = url.pathname;
@@ -53,9 +83,16 @@ export function createServer({syncUrl = "", fakeSheets = null} = {}) {
       response.writeHead(200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"});
       return response.end(sheetsView(backend));
     }
+    if (backend && path === "/sheets/export") {
+      const csv = sheetCsv(backend, url.searchParams.get("sheet") || "");
+      if (csv === null) { response.writeHead(404, {"Content-Type": "text/plain; charset=utf-8"}); return response.end("No such sheet.\n"); }
+      response.writeHead(200, {"Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="' + (url.searchParams.get("sheet") || "sheet").replace(/[^\w .-]/g, "_") + '.csv"', "Cache-Control": "no-store"});
+      return response.end(csv);
+    }
     if (backend && path === "/sheets") {
       const body = request.method === "POST" ? await new Promise(resolve => { let data = ""; request.on("data", chunk => { data += chunk; }); request.on("end", () => resolve(data)); }) : "";
       const answer = backend.handle(request.method, request.url, body);
+      if (request.method === "POST") save();
       response.writeHead(answer.status, answer.headers);
       return response.end(request.method === "HEAD" || answer.status === 204 ? undefined : answer.body);
     }
@@ -75,6 +112,7 @@ export function createServer({syncUrl = "", fakeSheets = null} = {}) {
     }
   });
   server.backend = backend;
+  server.flush = async () => { if (saving) { clearTimeout(saving); saving = null; } if (backend && file) { await mkdir(dirname(file), {recursive: true}); await writeFile(file, backend.snapshot(), "utf8"); } };
   return server;
 }
 
@@ -89,7 +127,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const syncUrl = String(option("sync-url") ?? process.env.OMF_SYNC_URL ?? "");
   const fake = option("no-sheets") !== true && !syncUrl;
   const password = String(option("password") ?? "facilitator1");
-  const server = createServer({syncUrl, fakeSheets: fake ? {password} : null});
+  const data = option("data") === undefined ? fileURLToPath(new URL("../local-data/sheets.json", import.meta.url)) : String(option("data"));
+  const server = createServer({syncUrl, fakeSheets: fake ? {password, file: data === "none" ? "" : data} : null});
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => { void server.flush().finally(() => process.exit(0)); });
   server.on("error", error => {
     console.error(error.code === "EADDRINUSE" ? `Port ${port} is busy. Try: node scripts/serve.mjs --port=${port + 1}` : error.message);
     process.exit(1);
@@ -103,7 +143,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     }
     if (syncUrl && !fake) console.log("Google Sheets address: " + syncUrl);
     if (fake) {
-      console.log(`\nLocal Google Sheets stand-in (data is lost when you stop the server):
+      console.log(`\nLocal Google Sheets stand-in (saved in local-data/sheets.json, it survives a restart):
   view the sheets       http://localhost:${port}/sheets/view
   facilitator password  ${password}
 

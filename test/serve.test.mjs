@@ -74,3 +74,38 @@ test("Over http the game synchronizes its clock with the local server", {skip: !
     await close(server);
   }
 });
+
+test("The local spreadsheet survives a restart of the server and every sheet can be downloaded as CSV", async () => {
+  const {mkdtempSync, rmSync} = await import('node:fs');
+  const {tmpdir} = await import('node:os');
+  const {join} = await import('node:path');
+  const folder = mkdtempSync(join(tmpdir(), "omf-"));
+  const file = join(folder, "sheets.json");
+  try {
+    const first = await listen({fakeSheets: {password: "a long test password", file}});
+    const post = body => fetch(first.base + "/sheets", {method: "POST", body: JSON.stringify({v: 1, ...body})}).then(reply => reply.json());
+    assert.equal((await post({type: "join", id: "player-id-000001", name: "Anna K", international: true})).ok, true);
+    assert.equal((await post({type: "scores", token: "a long test password", table: [["Rank", "Team"], [1, "Ünï, \"quoted\""]]})).ok, true);
+    const csv = await fetch(first.base + "/sheets/export?sheet=Scores");
+    assert.match(csv.headers.get("content-disposition"), /Scores\.csv/);
+    const bytes = new Uint8Array(await csv.arrayBuffer());
+    assert.deepEqual([...bytes.slice(0, 3)], [0xef, 0xbb, 0xbf], "a BOM, so that Excel reads UTF-8");
+    const text = new TextDecoder().decode(bytes);
+    assert.ok(text.startsWith("Rank,Team"));
+    assert.match(text, /1,"Ünï, ""quoted"""/);
+    const missing = await fetch(first.base + "/sheets/export?sheet=Nope");
+    assert.equal(missing.status, 404);
+    await missing.text();
+    await first.server.flush();
+    await close(first.server);
+
+    const second = await listen({fakeSheets: {password: "a long test password", file}});
+    const me = await (await fetch(second.base + "/sheets?action=me&id=player-id-000001")).json();
+    assert.equal(me.found, true);
+    assert.equal(me.name, "Anna K");
+    assert.equal(second.server.backend.table("Players")[0].joined_at instanceof Date, true, "dates come back as dates");
+    await close(second.server);
+  } finally {
+    rmSync(folder, {recursive: true, force: true});
+  }
+});
