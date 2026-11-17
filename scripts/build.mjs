@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const fromRoot = path => new URL("../" + path, import.meta.url);
@@ -117,11 +117,29 @@ ${blocks.css}${blocks.engine}${blocks.interface}</body>
   return { html, blocks };
 }
 
+// node scripts/build.mjs                          the committed files (no Google Sheets address inside)
+// node scripts/build.mjs --sync-url=https://script.google.com/macros/s/…/exec
+//                                                   the same blocks with the address already inside, in dist/ (not committed):
+//                                                   paste those three files into Tilda
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const argument = process.argv.slice(2).find(item => item.startsWith("--sync-url="));
+  const address = argument ? argument.slice("--sync-url=".length).trim() : "";
+  if (argument && !/^https:\/\/script\.google\.com\/\S+\/exec$/.test(address)) {
+    console.error("--sync-url must be the Web app URL from Apps Script: https://script.google.com/macros/s/…/exec");
+    process.exit(1);
+  }
   const { html, blocks } = await build();
+  const put = async (folder, name, text) => {
+    const target = fromRoot(folder + name);
+    if (folder) await mkdir(fromRoot(folder), { recursive: true });
+    await writeFile(target, text, "utf8");
+  };
+  const withAddress = text => (address ? text.replace('data-sync-url=""', `data-sync-url="${address}"`) : text);
+  const folder = address ? "dist/" : "";
   await Promise.all([
-    writeFile(fromRoot(OUTPUT_HTML), html, "utf8"),
-    ...Object.entries(OUTPUT_BLOCKS).map(([key, path]) => writeFile(fromRoot(path), blocks[key], "utf8"))
+    put(folder, OUTPUT_HTML, withAddress(html)),
+    ...Object.entries(OUTPUT_BLOCKS).map(([key, path]) => put(folder, path, withAddress(blocks[key])))
   ]);
-  for (const [key, path] of Object.entries(OUTPUT_BLOCKS)) console.log(path.padEnd(32), (Buffer.byteLength(blocks[key]) / 1024).toFixed(1) + " KB");
+  for (const [key, path] of Object.entries(OUTPUT_BLOCKS)) console.log((folder + path).padEnd(36), (Buffer.byteLength(blocks[key]) / 1024).toFixed(1) + " KB");
+  if (address) console.log("\nThe Google Sheets address is inside block 1. Paste the three files from dist/ into Tilda.");
 }
