@@ -1,0 +1,18 @@
+Revolut — report and regional dossiers update
+
+Replace all three T123 blocks in this order:
+1. 01-t123-html-css.txt
+2. 02-t123-game-engine.txt
+3. 03-t123-game-interface.txt
+
+The Apps Script /exec URL provided in this conversation is already included in block 1. Publish the Tilda page after replacing the blocks. No Apps Script changes are needed.
+
+Open report is available in the Decision journal and final Board Brief, and in the facilitator panel for teams loaded from Sheets. It opens a read-only snapshot in a new tab, with Full screen and Print / Save PDF.
+
+The standalone HTML uses the same endpoint. For private rehearsal, open it with #practice.
+
+Repository update: GitHub write access was unavailable. To apply the included source/build/test commit to a checkout of branch claude/lucid-wozniak-rcrpub, run:
+  git am repository-update.patch
+Then push using your own GitHub account.
+
+Verification: 118 unit, data, scoring, sync and bundle checks passed. Browser/UI tests could not run in this environment (Chromium IPC is blocked); the published Tilda page was not tested.

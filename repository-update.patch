@@ -1,0 +1,880 @@
+From 4f3147fc6b0102bccdcba91a7dcf4cfa4985d5d1 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Wed, 18 Nov 2026 16:55:05 +0100
+Subject: [PATCH] Add presentation reports and route reading links to regional
+ Google Docs
+
+---
+ 01-t123-html-css.txt       |  11 ++-
+ 02-t123-game-engine.txt    |  69 ++++++++++++++++++-
+ 03-t123-game-interface.txt |  45 ++++++++++---
+ README.md                  |   7 ++
+ one-market-first.html      | 125 +++++++++++++++++++++++++++++++---
+ scripts/build.mjs          |   2 +-
+ src/app.mjs                |  34 ++++++++--
+ src/host.mjs               |   8 ++-
+ src/report.mjs             |  63 +++++++++++++++++
+ src/scenario.mjs           |   9 +++
+ test/report.test.mjs       | 134 +++++++++++++++++++++++++++++++++++++
+ 11 files changed, 476 insertions(+), 31 deletions(-)
+ create mode 100644 src/report.mjs
+ create mode 100644 test/report.test.mjs
+
+diff --git a/01-t123-html-css.txt b/01-t123-html-css.txt
+index a96e543..7c8b420 100644
+--- a/01-t123-html-css.txt
++++ b/01-t123-html-css.txt
+@@ -801,6 +801,15 @@ const CONFIG = {
+   maxImportBytes: 512 * 1024
+ };
+ 
++// Regional reading packs include the company, theory and competitor sources.
++// Keep the original source metadata below as provenance; the interface routes reading links here.
++const MARKET_DOSSIERS = {
++  indonesia: "https://docs.google.com/document/d/1UcbzsmaiIJJYry8H_Vky3vGO9woW55uWVfqxpkfLBRs/edit",
++  philippines: "https://docs.google.com/document/d/1-kG0D1Fb65b2OdcBlc1SUsD4TVhoeM0RIsLplP0wz3U/edit",
++  thailand: "https://docs.google.com/document/d/1WxISSlc86Qc_TqZ-f-Y2fuJx6tEedhBjfmSZI-hM_wQ/edit",
++  vietnam: "https://docs.google.com/document/d/1lNgckXBRgCDCW7nKqKBifU2ROr_gvLgGCNfuzMLk-Ko/edit"
++};
++
+ const SOURCES = {
+   revolut: ["Revolut Singapore · Account availability", "https://help.revolut.com/en-SG/help/profile-and-plan/profile-plan/verifying-identity/what-countries-are-supported/"],
+   transfers: ["Revolut Singapore · International transfers", "https://help.revolut.com/en-SG/help/transfers/outbound-transfers/how-to-send-money-to-another-bank/how-do-i-send-money-to-a-bank-account/"],
+@@ -1108,7 +1117,7 @@ const RUBRIC = [
+ ];
+ 
+ const QUESTION = "Which assumption most threatens your plan, and what specific evidence would make you change your next commitment?";
+-return { CONFIG, SOURCES, SINGAPORE, MARKETS, PROBLEMS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION };
++return { CONFIG, MARKET_DOSSIERS, SOURCES, SINGAPORE, MARKETS, PROBLEMS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION };
+ })();
+ 
+ window.__omfModules = Object.assign(window.__omfModules || {}, { hash: __omf_hash, tuning: __omf_tuning, scenario: __omf_scenario });
+diff --git a/02-t123-game-engine.txt b/02-t123-game-engine.txt
+index 3b3f75a..bbf8e66 100644
+--- a/02-t123-game-engine.txt
++++ b/02-t123-game-engine.txt
+@@ -1451,7 +1451,74 @@ function scoresSheetTable(room, gradesByTeam, records = {}) {
+ return { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename, csvCell, scoresCsv, scoresSheetTable };
+ })();
+ 
+-window.__omfModules = Object.assign(window.__omfModules || {}, { rules: __omf_rules, progress: __omf_progress, clock: __omf_clock, storage: __omf_storage, sync: __omf_sync, presentation: __omf_presentation });
++// src/report.mjs
++const __omf_report = (() => {
++const { CONFIG, MARKETS, MARKET_DOSSIERS, ROUNDS, WORKSHEET, QUESTION } = __omf_scenario;
++const { replay, OUTCOMES, gameScore } = __omf_rules;
++const { esc } = __omf_presentation;
++// No state or credentials are stored in the report URL. This is a read-only snapshot.
++function reportHtml(record, generatedAt = Date.now()) {
++  const {state, path} = replay(record);
++  const market = MARKETS[record.market];
++  const profile = market.profiles[state.profile];
++  const complete = path.length === ROUNDS.length;
++  const outcome = complete ? OUTCOMES[path.at(-1).choice] : null;
++  const paragraph = value => '<p class="written">' + esc(value) + '</p>';
++  const field = (label, value) => value ? '<div class="note"><h3>' + esc(label) + '</h3>' + paragraph(value) + '</div>' : '';
++  const stamp = new Intl.DateTimeFormat('en-GB', {timeZone: 'Europe/Moscow', dateStyle: 'medium', timeStyle: 'short'}).format(generatedAt);
++  const journal = path.map(event => '<article class="decision"><header><p class="eyebrow">' + esc(event.round) +
++    (event.method === 'default' ? ' · Default decision' : '') + '</p><h2>' + esc(event.label) + '</h2>' +
++    '<p>' + event.cost + ' credits spent · ' + event.credits + ' credits remaining</p></header>' +
++    field('Evidence / assumption', event.evidence) + field('Trade-off', event.tradeoff) + field('Simulated result', event.result) +
++    WORKSHEET[event.round].map(([key, label]) => field(label, record.notes[event.round + '.' + key])).join('') + '</article>').join('');
++  return `<!doctype html>
++<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
++<title>Revolut — Team ${esc(record.team)} · ${esc(market.name)} · Board report</title>
++<style>
++*{box-sizing:border-box}body{margin:0;background:#f5efe3;color:#192b3c;font:20px/1.55 system-ui,sans-serif}main{max-width:1120px;margin:auto;padding:40px 32px 80px}h1,h2,h3,p{margin:0 0 16px}h1{font-size:clamp(32px,5vw,54px);line-height:1.12}h2{font-size:28px;line-height:1.25}h3{font-size:19px;margin-bottom:6px}.eyebrow{font-size:14px;text-transform:uppercase;letter-spacing:.08em}.muted{color:#52606b;font-size:16px}.toolbar{display:flex;flex-wrap:wrap;gap:12px;max-width:1120px;margin:auto;padding:20px 32px 0}.toolbar button,.toolbar a{padding:12px 18px;border:1px solid #192b3c;background:#fffaf0;color:inherit;font:inherit;font-size:16px;text-decoration:none;cursor:pointer;border-radius:4px}.toolbar button:focus-visible,.toolbar a:focus-visible{outline:3px solid #c84a32;outline-offset:3px}.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:28px 0}.metric{padding:18px;background:#fffaf0;border:1px solid #c9c3b8}.metric strong{display:block;font-size:32px}.metric span{font-size:16px}.section,.decision{padding:28px 0;border-top:2px solid #192b3c}.decision header{margin-bottom:22px}.note{margin-bottom:18px}.written{white-space:pre-wrap;overflow-wrap:anywhere}a{color:#154c82}footer{border-top:1px solid #c9c3b8;padding-top:24px}body:fullscreen{overflow:auto}html:fullscreen{overflow:auto}@media(max-width:600px){body{font-size:18px}main{padding:28px 18px 60px}.toolbar{padding:16px 18px 0}.metrics{gap:8px}.metric{padding:10px}.metric strong{font-size:28px}.metric span{font-size:14px}h2{font-size:25px}}@media print{body{background:#fff;color:#111;font-size:11pt;line-height:1.4}.toolbar{display:none}main{max-width:none;padding:0}h1{font-size:26pt}h2{font-size:18pt}h3{font-size:12pt}.metrics{gap:8px;margin:16px 0}.metric{padding:10px;background:#fff}.metric strong{font-size:20pt}.metric span,.muted{font-size:10pt}.section,.decision{padding:16px 0}.decision header,.note{break-inside:avoid}h1,h2,h3{break-after:avoid}p{orphans:3;widows:3}a{color:inherit}}
++</style></head><body>
++<nav class="toolbar" aria-label="Report controls"><button type="button" data-report-fullscreen>Full screen</button><button type="button" data-report-print>Print / Save PDF</button><a href="${esc(MARKET_DOSSIERS[record.market])}" target="_blank" rel="noopener noreferrer">${esc(market.name)} dossier</a></nav>
++<main><header><p class="eyebrow">Revolut · One Market First · Board report</p><h1>Team ${esc(record.team)} · ${esc(market.name)}</h1><p>${esc(market.city)} · ${esc(market.currency)}</p><p class="muted">${complete ? 'Completed strategy' : 'Strategy in progress'} · ${path.length} / ${ROUNDS.length} decisions locked<br>Snapshot: ${esc(stamp)} Moscow time. Reopen the report from the game to include later changes.</p></header>
++<div class="metrics"><div class="metric"><strong>${CONFIG.budget}</strong><span>Starting credits</span></div><div class="metric"><strong>${CONFIG.budget - state.credits}</strong><span>Credits spent</span></div><div class="metric"><strong>${state.credits}</strong><span>Credits remaining</span></div></div>
++<section class="section"><h2>First customer</h2>${profile ? '<h3>' + esc(profile.name) + '</h3>' + paragraph(profile.journey) : '<p>Not selected yet.</p>'}</section>
++<section class="section"><h2>Request to the Board</h2>${outcome ? '<h3>' + esc(outcome[0]) + '</h3>' + paragraph(outcome[1]) : '<p>Final funding decision not locked yet.</p>'}${field('Team funding rationale', record.notes['R7.board'])}${field('One-page Board Brief', record.brief)}</section>
++${complete ? '<section class="section"><h2>Simulated game result</h2><p>' + Math.round(gameScore(record).total) + ' / 100</p><p class="muted">This is the simulated game result, not the expert panel’s final grade.</p></section>' : ''}
++<section aria-label="Full decision journal"><h2>Decision sequence and rationale</h2>${journal || '<p>No decisions locked yet.</p>'}</section>
++<footer><h2>Common hearing question</h2>${paragraph(QUESTION)}<p class="muted">Read-only report. Decisions and notes are edited in the game.</p></footer></main></body></html>`;
++}
++
++// Open synchronously in the click handler, before awaiting queued note saves, so mobile browsers allow the tab.
++function openReportWindow() {
++  const popup = window.open('', '_blank');
++  if (!popup) throw new Error('The report tab was blocked. Allow pop-ups for this page and press Open report again.');
++  popup.opener = null;
++  popup.document.title = 'Preparing team report';
++  popup.document.body.textContent = 'Preparing your report…';
++  return popup;
++}
++
++function writeTeamReport(popup, record) {
++  if (popup.closed) return;
++  popup.document.open();
++  popup.document.write(reportHtml(record));
++  popup.document.close();
++  popup.document.querySelector('[data-report-print]').addEventListener('click', () => popup.print());
++  const toggle = popup.document.querySelector('[data-report-fullscreen]');
++  if (!popup.document.documentElement.requestFullscreen) toggle.hidden = true;
++  else {
++    toggle.addEventListener('click', async () => {
++      try {
++        if (popup.document.fullscreenElement) await popup.document.exitFullscreen();
++        else await popup.document.documentElement.requestFullscreen();
++      } catch { toggle.textContent = 'Use your browser’s full-screen control'; }
++    });
++    popup.document.addEventListener('fullscreenchange', () => { toggle.textContent = popup.document.fullscreenElement ? 'Exit full screen' : 'Full screen'; });
++  }
++}
++return { reportHtml, openReportWindow, writeTeamReport };
++})();
++
++window.__omfModules = Object.assign(window.__omfModules || {}, { rules: __omf_rules, progress: __omf_progress, clock: __omf_clock, storage: __omf_storage, sync: __omf_sync, presentation: __omf_presentation, report: __omf_report });
+ })();
+ </script>
+ <!-- End T123 -->
+diff --git a/03-t123-game-interface.txt b/03-t123-game-interface.txt
+index 14187bd..4947a9e 100644
+--- a/03-t123-game-interface.txt
++++ b/03-t123-game-interface.txt
+@@ -4,7 +4,7 @@
+ "use strict";
+ 
+ const shared = window.__omfModules || {};
+-if (!shared.hash || !shared.tuning || !shared.scenario || !shared.rules || !shared.progress || !shared.clock || !shared.storage || !shared.sync || !shared.presentation) {
++if (!shared.hash || !shared.tuning || !shared.scenario || !shared.rules || !shared.progress || !shared.clock || !shared.storage || !shared.sync || !shared.presentation || !shared.report) {
+   const notice = document.querySelector('#one-market-first [data-ui="notice"]');
+   if (notice) {
+     notice.textContent = "A game block is missing. Paste the three blocks in order: 1 HTML, styles and data, 2 game engine, 3 game interface.";
+@@ -21,6 +21,7 @@ const __omf_clock = shared.clock;
+ const __omf_storage = shared.storage;
+ const __omf_sync = shared.sync;
+ const __omf_presentation = shared.presentation;
++const __omf_report = shared.report;
+ 
+ // src/host.mjs
+ const __omf_host = (() => {
+@@ -29,6 +30,7 @@ const { TEAMS, SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, standings
+ const { tuning } = __omf_tuning;
+ const { hostKey, getStored, putStored } = __omf_storage;
+ const { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, scoresCsv, scoresSheetTable } = __omf_presentation;
++const { openReportWindow, writeTeamReport } = __omf_report;
+ const { trueNow } = __omf_clock;
+ const { syncEnabled, fetchRoom, fetchRoster, hostCommand, pushScores, recordFromPayload } = __omf_sync;
+ function freshPanel() {
+@@ -181,7 +183,7 @@ function scoresSentText() {
+ 
+ function journalHtml(team) {
+   const record = host.records[team];
+-  return record ? disclosure("Team journal from Google Sheets · " + record.history.length + "/7 decisions", '<p class="pv-worksheet-note">' + esc(textReport(record)) + "</p>") : "";
++  return record ? '<div class="pv-actions pv-file-actions">' + button("Open report", "host-report") + '</div>' + disclosure("Team journal from Google Sheets · " + record.history.length + "/7 decisions", '<p class="pv-worksheet-note">' + esc(textReport(record)) + "</p>") : "";
+ }
+ 
+ function judgeTable(team) {
+@@ -315,7 +317,10 @@ function applyRoster(roster) {
+ }
+ 
+ async function handleHostAction(id, target, ui) {
+-  if (id === "host-refresh") await refreshHostData(ui);
++  if (id === "host-report") {
++    const record = host.records[host.selected];
++    if (record) writeTeamReport(openReportWindow(), record);
++  } else if (id === "host-refresh") await refreshHostData(ui);
+   else if (id === "host-scores") exportScores();
+   else if (id === "host-scores-ru") exportScores(true);
+   else if (id === "host-scores-sync") {
+@@ -448,10 +453,11 @@ return { renderHost, hostClock, handleHostAction, updateHostField, refreshHostDa
+ 
+ // src/app.mjs
+ await (async () => {
+-const { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION, PROBLEMS } = __omf_scenario;
++const { CONFIG, SOURCES, SINGAPORE, MARKETS, MARKET_DOSSIERS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION, PROBLEMS } = __omf_scenario;
+ const { TEAMS, SCHEDULE, OUTCOMES, makeRoom, marketForTable, roomStart, phaseAt, replay, optionsFor, pendingFact, settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord, contentMismatch, gameScore } = __omf_rules;
+ const { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot, activeTeam, newId, newRecord, withSaveLock, knownTable, SaveError, recoveryOptions, requestPersistence, readPlayer, writePlayer } = __omf_storage;
+ const { esc, button, disclosure, facts, stage, interval, countdown } = __omf_presentation;
++const { openReportWindow, writeTeamReport } = __omf_report;
+ const { renderHost, handleHostAction, updateHostField, hostClock, refreshHostData } = __omf_host;
+ const { trueNow, clockStatus, syncClock } = __omf_clock;
+ const { gameProgress } = __omf_progress;
+@@ -494,9 +500,17 @@ function renderNotice() {
+   ui.notice.hidden = !ui.notice.textContent;
+ }
+ 
+-function sourceLinks(ids) {
+-  return "<ul>" + ids.map(id => SOURCES[id]).map(([label, url]) =>
+-    '<li><a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + "</a></li>").join("") + "</ul>";
++function readingMarket() {
++  if (view.record) return view.record.market;
++  if (view.me?.team && roomStart(view.me.room) !== null) return marketForTable(view.me.room, view.me.team);
++  return view.entryMode === "practice" ? view.market : null;
++}
++
++function sourceLinks(ids, market = readingMarket()) {
++  if (!market) return '<p>' + ids.map(id => esc(SOURCES[id][0])).join(' · ') + '</p><ul>' + marketList.map(([id, item]) =>
++    '<li><a href="' + esc(MARKET_DOSSIERS[id]) + '" target="_blank" rel="noopener noreferrer">' + esc(item.name) + ' · Google Docs dossier</a></li>').join('') + '</ul>';
++  return "<ul>" + ids.map(id => SOURCES[id]).map(([label]) =>
++    '<li><a href="' + esc(MARKET_DOSSIERS[market]) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + "</a></li>").join("") + "</ul>";
+ }
+ 
+ function teamSelector() {
+@@ -661,13 +675,14 @@ function progressBar(phase, path) {
+ }
+ 
+ function marketDossier(market, selected) {
++  const marketId = marketList.find(([, item]) => item === market)[0];
+   const profiles = selected ? [[selected, market.profiles[selected]]] : Object.entries(market.profiles);
+   return `<div class="pv-wording">
+     ${facts(market.facts)}
+     ${profiles.map(([id, profile]) => `<article class="pv-dossier"><p class="pv-mono">Profile ${id}</p>
+       <h3>${esc(profile.name)}</h3><p>${esc(profile.journey)}</p><p><strong>Suggested channel</strong> · ${esc(profile.channel)}</p>
+-      <ul>${profile.alternatives.map(([name, detail, link]) => `<li><a href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(name)}</a> · ${esc(detail)}</li>`).join("")}</ul></article>`).join("")}
+-    ${sourceLinks(market.sources)}
++      <ul>${profile.alternatives.map(([name, detail]) => `<li><a href="${esc(MARKET_DOSSIERS[marketId])}" target="_blank" rel="noopener noreferrer">${esc(name)}</a> · ${esc(detail)}</li>`).join("")}</ul></article>`).join("")}
++    ${sourceLinks(market.sources, marketId)}
+   </div>`;
+ }
+ 
+@@ -807,6 +822,7 @@ function resultScreen(phase, state, path, record) {
+   const editing = phase.id === "PREP";
+   return stage("Board Brief", record.mode === "practice" ? "Practice outcome" : "Investment hearing", `
+     <div class="pv-record pv-checkpoint"><p class="pv-mono">Your recommendation</p><h3>${esc(outcome[0])}</h3><p>${esc(outcome[1])}</p></div>
++    <div class="pv-actions pv-file-actions">${button("Open report", "open-report", "primary")}</div>
+     ${gameResult(record)}
+     <div class="pv-task"><strong>At the hearing</strong>Three minutes to pitch and one minute for the common question. Show the first customer, two CAGE findings, the Uppsala pathway, what the budget changed and how you handled the emergency.</div>
+     <p><strong>Common question</strong> · ${esc(QUESTION)}</p>
+@@ -839,6 +855,7 @@ function renderTeam(now) {
+   return `${stickyBar(record, state, phase, path)}
+     <div class="pv-layout"><div>${body}</div><aside class="pv-sidebar">
+       <section class="pv-sidebar-card"><h3>Decision journal</h3>${logList(path)}
++        ${path.length < ROUNDS.length ? '<div class="pv-actions pv-file-actions">' + button("Open report", "open-report") + '</div>' : ""}
+         ${syncLine(record)}
+       </section>
+       <section class="pv-sidebar-card"><h3>Team materials</h3>
+@@ -1183,6 +1200,16 @@ const controls = {
+     void refreshHostData({render, announce});
+   },
+   materials: renderMaterials,
++  "open-report": async () => {
++    const session = view.record?.session;
++    if (!session) return;
++    const popup = openReportWindow();
++    try {
++      await view.writes;
++      if (view.record?.session !== session) throw new Error("The team session changed. Open the report again from the current game.");
++      writeTeamReport(popup, view.record);
++    } catch (error) { popup.close(); throw error; }
++  },
+   "close-materials": () => ui.materials.close(),
+   "jump-entry": () => {
+     const heading = root.querySelector("#omf-entry-title");
+diff --git a/README.md b/README.md
+index 72a02e8..ce66b6d 100644
+--- a/README.md
++++ b/README.md
+@@ -122,3 +122,10 @@ flowchart TD
+ - Панель экспертов хранит записи в браузере ведущего. Для офлайн-семинара можно использовать распечатанные карточки и журнал. Код комнаты привязывает рынок и расписание. Очная игра опирается на наблюдение ведущих и независимую оценку.
+ - Содержание рынков, досье, событий и рабочих листов находится в [src/scenario.mjs](src/scenario.mjs). Цены, условия ходов, расчёт последствий и таймер — в [src/rules.mjs](src/rules.mjs). Журнал позволяет проверить, почему доступно каждое решение.
+ - Для изменения интерфейса используйте [src/app.mjs](src/app.mjs), [src/host.mjs](src/host.mjs) и [src/game.css](src/game.css). Часы и серверная сверка — в [src/clock.mjs](src/clock.mjs). После правок выполните `node scripts/build.mjs`. Скрипт обновит оба готовых файла: каждый модуль оборачивается в собственную область видимости, а несуществующие импорты и неподдерживаемые формы `import`/`export` приводят к ошибке сборки. `node --test` проверяет правила, часы семинара, очерёдность событий, восстановление, достижимость финалов, серверную сверку времени и сам собранный файл: актуальность относительно `src/`, корректность скрипта и (если установлен Playwright) полный прогон практического режима в браузере. Зависимости для сборки и тестов не требуются.
++# Reports and regional reading packs
++
++**Open report** opens a separate, read-only tab from the team's Decision journal or final Board Brief. The facilitator can open the selected team's report from the journal loaded from Google Sheets. The report shows the market, customer, actual credit ledger, all locked decisions, evidence and trade-offs, worksheet notes, funding recommendation and Board Brief. Pending local note saves finish before the snapshot is generated. It offers **Full screen** where the browser supports it and **Print / Save PDF**. Later changes appear when the report is reopened; the report does not change the saved game.
++
++All player-visible source and competitor links open that market's Google Docs dossier. General company, Singapore, CAGE and Uppsala links use the same regional document. Before a live market is assigned, Rules offers the four regional dossiers. Original in-game case text, source metadata, prices, rules and saved-game content fingerprint are preserved. Document URLs are configured once in `src/scenario.mjs` as `MARKET_DOSSIERS`.
++
++To update Tilda, rebuild and replace **all three** T123 blocks in order, retain the Apps Script `/exec` address in block 1, and publish the page. Alternatively, `node scripts/build.mjs --sync-url=https://script.google.com/macros/s/DEPLOYMENT_ID/exec` produces ready-to-paste blocks and a standalone HTML file in `dist/` with the address already included. The Google Sheets script does not need updating for this feature.
+diff --git a/one-market-first.html b/one-market-first.html
+index 2f1eefb..9b065b7 100644
+--- a/one-market-first.html
++++ b/one-market-first.html
+@@ -811,6 +811,15 @@ const CONFIG = {
+   maxImportBytes: 512 * 1024
+ };
+ 
++// Regional reading packs include the company, theory and competitor sources.
++// Keep the original source metadata below as provenance; the interface routes reading links here.
++const MARKET_DOSSIERS = {
++  indonesia: "https://docs.google.com/document/d/1UcbzsmaiIJJYry8H_Vky3vGO9woW55uWVfqxpkfLBRs/edit",
++  philippines: "https://docs.google.com/document/d/1-kG0D1Fb65b2OdcBlc1SUsD4TVhoeM0RIsLplP0wz3U/edit",
++  thailand: "https://docs.google.com/document/d/1WxISSlc86Qc_TqZ-f-Y2fuJx6tEedhBjfmSZI-hM_wQ/edit",
++  vietnam: "https://docs.google.com/document/d/1lNgckXBRgCDCW7nKqKBifU2ROr_gvLgGCNfuzMLk-Ko/edit"
++};
++
+ const SOURCES = {
+   revolut: ["Revolut Singapore · Account availability", "https://help.revolut.com/en-SG/help/profile-and-plan/profile-plan/verifying-identity/what-countries-are-supported/"],
+   transfers: ["Revolut Singapore · International transfers", "https://help.revolut.com/en-SG/help/transfers/outbound-transfers/how-to-send-money-to-another-bank/how-do-i-send-money-to-a-bank-account/"],
+@@ -1118,7 +1127,7 @@ const RUBRIC = [
+ ];
+ 
+ const QUESTION = "Which assumption most threatens your plan, and what specific evidence would make you change your next commitment?";
+-return { CONFIG, SOURCES, SINGAPORE, MARKETS, PROBLEMS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION };
++return { CONFIG, MARKET_DOSSIERS, SOURCES, SINGAPORE, MARKETS, PROBLEMS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION };
+ })();
+ 
+ window.__omfModules = Object.assign(window.__omfModules || {}, { hash: __omf_hash, tuning: __omf_tuning, scenario: __omf_scenario });
+@@ -2578,7 +2587,74 @@ function scoresSheetTable(room, gradesByTeam, records = {}) {
+ return { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, teamFilename, csvCell, scoresCsv, scoresSheetTable };
+ })();
+ 
+-window.__omfModules = Object.assign(window.__omfModules || {}, { rules: __omf_rules, progress: __omf_progress, clock: __omf_clock, storage: __omf_storage, sync: __omf_sync, presentation: __omf_presentation });
++// src/report.mjs
++const __omf_report = (() => {
++const { CONFIG, MARKETS, MARKET_DOSSIERS, ROUNDS, WORKSHEET, QUESTION } = __omf_scenario;
++const { replay, OUTCOMES, gameScore } = __omf_rules;
++const { esc } = __omf_presentation;
++// No state or credentials are stored in the report URL. This is a read-only snapshot.
++function reportHtml(record, generatedAt = Date.now()) {
++  const {state, path} = replay(record);
++  const market = MARKETS[record.market];
++  const profile = market.profiles[state.profile];
++  const complete = path.length === ROUNDS.length;
++  const outcome = complete ? OUTCOMES[path.at(-1).choice] : null;
++  const paragraph = value => '<p class="written">' + esc(value) + '</p>';
++  const field = (label, value) => value ? '<div class="note"><h3>' + esc(label) + '</h3>' + paragraph(value) + '</div>' : '';
++  const stamp = new Intl.DateTimeFormat('en-GB', {timeZone: 'Europe/Moscow', dateStyle: 'medium', timeStyle: 'short'}).format(generatedAt);
++  const journal = path.map(event => '<article class="decision"><header><p class="eyebrow">' + esc(event.round) +
++    (event.method === 'default' ? ' · Default decision' : '') + '</p><h2>' + esc(event.label) + '</h2>' +
++    '<p>' + event.cost + ' credits spent · ' + event.credits + ' credits remaining</p></header>' +
++    field('Evidence / assumption', event.evidence) + field('Trade-off', event.tradeoff) + field('Simulated result', event.result) +
++    WORKSHEET[event.round].map(([key, label]) => field(label, record.notes[event.round + '.' + key])).join('') + '</article>').join('');
++  return `<!doctype html>
++<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
++<title>Revolut — Team ${esc(record.team)} · ${esc(market.name)} · Board report</title>
++<style>
++*{box-sizing:border-box}body{margin:0;background:#f5efe3;color:#192b3c;font:20px/1.55 system-ui,sans-serif}main{max-width:1120px;margin:auto;padding:40px 32px 80px}h1,h2,h3,p{margin:0 0 16px}h1{font-size:clamp(32px,5vw,54px);line-height:1.12}h2{font-size:28px;line-height:1.25}h3{font-size:19px;margin-bottom:6px}.eyebrow{font-size:14px;text-transform:uppercase;letter-spacing:.08em}.muted{color:#52606b;font-size:16px}.toolbar{display:flex;flex-wrap:wrap;gap:12px;max-width:1120px;margin:auto;padding:20px 32px 0}.toolbar button,.toolbar a{padding:12px 18px;border:1px solid #192b3c;background:#fffaf0;color:inherit;font:inherit;font-size:16px;text-decoration:none;cursor:pointer;border-radius:4px}.toolbar button:focus-visible,.toolbar a:focus-visible{outline:3px solid #c84a32;outline-offset:3px}.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:28px 0}.metric{padding:18px;background:#fffaf0;border:1px solid #c9c3b8}.metric strong{display:block;font-size:32px}.metric span{font-size:16px}.section,.decision{padding:28px 0;border-top:2px solid #192b3c}.decision header{margin-bottom:22px}.note{margin-bottom:18px}.written{white-space:pre-wrap;overflow-wrap:anywhere}a{color:#154c82}footer{border-top:1px solid #c9c3b8;padding-top:24px}body:fullscreen{overflow:auto}html:fullscreen{overflow:auto}@media(max-width:600px){body{font-size:18px}main{padding:28px 18px 60px}.toolbar{padding:16px 18px 0}.metrics{gap:8px}.metric{padding:10px}.metric strong{font-size:28px}.metric span{font-size:14px}h2{font-size:25px}}@media print{body{background:#fff;color:#111;font-size:11pt;line-height:1.4}.toolbar{display:none}main{max-width:none;padding:0}h1{font-size:26pt}h2{font-size:18pt}h3{font-size:12pt}.metrics{gap:8px;margin:16px 0}.metric{padding:10px;background:#fff}.metric strong{font-size:20pt}.metric span,.muted{font-size:10pt}.section,.decision{padding:16px 0}.decision header,.note{break-inside:avoid}h1,h2,h3{break-after:avoid}p{orphans:3;widows:3}a{color:inherit}}
++</style></head><body>
++<nav class="toolbar" aria-label="Report controls"><button type="button" data-report-fullscreen>Full screen</button><button type="button" data-report-print>Print / Save PDF</button><a href="${esc(MARKET_DOSSIERS[record.market])}" target="_blank" rel="noopener noreferrer">${esc(market.name)} dossier</a></nav>
++<main><header><p class="eyebrow">Revolut · One Market First · Board report</p><h1>Team ${esc(record.team)} · ${esc(market.name)}</h1><p>${esc(market.city)} · ${esc(market.currency)}</p><p class="muted">${complete ? 'Completed strategy' : 'Strategy in progress'} · ${path.length} / ${ROUNDS.length} decisions locked<br>Snapshot: ${esc(stamp)} Moscow time. Reopen the report from the game to include later changes.</p></header>
++<div class="metrics"><div class="metric"><strong>${CONFIG.budget}</strong><span>Starting credits</span></div><div class="metric"><strong>${CONFIG.budget - state.credits}</strong><span>Credits spent</span></div><div class="metric"><strong>${state.credits}</strong><span>Credits remaining</span></div></div>
++<section class="section"><h2>First customer</h2>${profile ? '<h3>' + esc(profile.name) + '</h3>' + paragraph(profile.journey) : '<p>Not selected yet.</p>'}</section>
++<section class="section"><h2>Request to the Board</h2>${outcome ? '<h3>' + esc(outcome[0]) + '</h3>' + paragraph(outcome[1]) : '<p>Final funding decision not locked yet.</p>'}${field('Team funding rationale', record.notes['R7.board'])}${field('One-page Board Brief', record.brief)}</section>
++${complete ? '<section class="section"><h2>Simulated game result</h2><p>' + Math.round(gameScore(record).total) + ' / 100</p><p class="muted">This is the simulated game result, not the expert panel’s final grade.</p></section>' : ''}
++<section aria-label="Full decision journal"><h2>Decision sequence and rationale</h2>${journal || '<p>No decisions locked yet.</p>'}</section>
++<footer><h2>Common hearing question</h2>${paragraph(QUESTION)}<p class="muted">Read-only report. Decisions and notes are edited in the game.</p></footer></main></body></html>`;
++}
++
++// Open synchronously in the click handler, before awaiting queued note saves, so mobile browsers allow the tab.
++function openReportWindow() {
++  const popup = window.open('', '_blank');
++  if (!popup) throw new Error('The report tab was blocked. Allow pop-ups for this page and press Open report again.');
++  popup.opener = null;
++  popup.document.title = 'Preparing team report';
++  popup.document.body.textContent = 'Preparing your report…';
++  return popup;
++}
++
++function writeTeamReport(popup, record) {
++  if (popup.closed) return;
++  popup.document.open();
++  popup.document.write(reportHtml(record));
++  popup.document.close();
++  popup.document.querySelector('[data-report-print]').addEventListener('click', () => popup.print());
++  const toggle = popup.document.querySelector('[data-report-fullscreen]');
++  if (!popup.document.documentElement.requestFullscreen) toggle.hidden = true;
++  else {
++    toggle.addEventListener('click', async () => {
++      try {
++        if (popup.document.fullscreenElement) await popup.document.exitFullscreen();
++        else await popup.document.documentElement.requestFullscreen();
++      } catch { toggle.textContent = 'Use your browser’s full-screen control'; }
++    });
++    popup.document.addEventListener('fullscreenchange', () => { toggle.textContent = popup.document.fullscreenElement ? 'Exit full screen' : 'Full screen'; });
++  }
++}
++return { reportHtml, openReportWindow, writeTeamReport };
++})();
++
++window.__omfModules = Object.assign(window.__omfModules || {}, { rules: __omf_rules, progress: __omf_progress, clock: __omf_clock, storage: __omf_storage, sync: __omf_sync, presentation: __omf_presentation, report: __omf_report });
+ })();
+ </script>
+ <!-- End T123 -->
+@@ -2588,7 +2664,7 @@ window.__omfModules = Object.assign(window.__omfModules || {}, { rules: __omf_ru
+ "use strict";
+ 
+ const shared = window.__omfModules || {};
+-if (!shared.hash || !shared.tuning || !shared.scenario || !shared.rules || !shared.progress || !shared.clock || !shared.storage || !shared.sync || !shared.presentation) {
++if (!shared.hash || !shared.tuning || !shared.scenario || !shared.rules || !shared.progress || !shared.clock || !shared.storage || !shared.sync || !shared.presentation || !shared.report) {
+   const notice = document.querySelector('#one-market-first [data-ui="notice"]');
+   if (notice) {
+     notice.textContent = "A game block is missing. Paste the three blocks in order: 1 HTML, styles and data, 2 game engine, 3 game interface.";
+@@ -2605,6 +2681,7 @@ const __omf_clock = shared.clock;
+ const __omf_storage = shared.storage;
+ const __omf_sync = shared.sync;
+ const __omf_presentation = shared.presentation;
++const __omf_report = shared.report;
+ 
+ // src/host.mjs
+ const __omf_host = (() => {
+@@ -2613,6 +2690,7 @@ const { TEAMS, SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, standings
+ const { tuning } = __omf_tuning;
+ const { hostKey, getStored, putStored } = __omf_storage;
+ const { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, scoresCsv, scoresSheetTable } = __omf_presentation;
++const { openReportWindow, writeTeamReport } = __omf_report;
+ const { trueNow } = __omf_clock;
+ const { syncEnabled, fetchRoom, fetchRoster, hostCommand, pushScores, recordFromPayload } = __omf_sync;
+ function freshPanel() {
+@@ -2765,7 +2843,7 @@ function scoresSentText() {
+ 
+ function journalHtml(team) {
+   const record = host.records[team];
+-  return record ? disclosure("Team journal from Google Sheets · " + record.history.length + "/7 decisions", '<p class="pv-worksheet-note">' + esc(textReport(record)) + "</p>") : "";
++  return record ? '<div class="pv-actions pv-file-actions">' + button("Open report", "host-report") + '</div>' + disclosure("Team journal from Google Sheets · " + record.history.length + "/7 decisions", '<p class="pv-worksheet-note">' + esc(textReport(record)) + "</p>") : "";
+ }
+ 
+ function judgeTable(team) {
+@@ -2899,7 +2977,10 @@ function applyRoster(roster) {
+ }
+ 
+ async function handleHostAction(id, target, ui) {
+-  if (id === "host-refresh") await refreshHostData(ui);
++  if (id === "host-report") {
++    const record = host.records[host.selected];
++    if (record) writeTeamReport(openReportWindow(), record);
++  } else if (id === "host-refresh") await refreshHostData(ui);
+   else if (id === "host-scores") exportScores();
+   else if (id === "host-scores-ru") exportScores(true);
+   else if (id === "host-scores-sync") {
+@@ -3032,10 +3113,11 @@ return { renderHost, hostClock, handleHostAction, updateHostField, refreshHostDa
+ 
+ // src/app.mjs
+ await (async () => {
+-const { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION, PROBLEMS } = __omf_scenario;
++const { CONFIG, SOURCES, SINGAPORE, MARKETS, MARKET_DOSSIERS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION, PROBLEMS } = __omf_scenario;
+ const { TEAMS, SCHEDULE, OUTCOMES, makeRoom, marketForTable, roomStart, phaseAt, replay, optionsFor, pendingFact, settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord, contentMismatch, gameScore } = __omf_rules;
+ const { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot, activeTeam, newId, newRecord, withSaveLock, knownTable, SaveError, recoveryOptions, requestPersistence, readPlayer, writePlayer } = __omf_storage;
+ const { esc, button, disclosure, facts, stage, interval, countdown } = __omf_presentation;
++const { openReportWindow, writeTeamReport } = __omf_report;
+ const { renderHost, handleHostAction, updateHostField, hostClock, refreshHostData } = __omf_host;
+ const { trueNow, clockStatus, syncClock } = __omf_clock;
+ const { gameProgress } = __omf_progress;
+@@ -3078,9 +3160,17 @@ function renderNotice() {
+   ui.notice.hidden = !ui.notice.textContent;
+ }
+ 
+-function sourceLinks(ids) {
+-  return "<ul>" + ids.map(id => SOURCES[id]).map(([label, url]) =>
+-    '<li><a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + "</a></li>").join("") + "</ul>";
++function readingMarket() {
++  if (view.record) return view.record.market;
++  if (view.me?.team && roomStart(view.me.room) !== null) return marketForTable(view.me.room, view.me.team);
++  return view.entryMode === "practice" ? view.market : null;
++}
++
++function sourceLinks(ids, market = readingMarket()) {
++  if (!market) return '<p>' + ids.map(id => esc(SOURCES[id][0])).join(' · ') + '</p><ul>' + marketList.map(([id, item]) =>
++    '<li><a href="' + esc(MARKET_DOSSIERS[id]) + '" target="_blank" rel="noopener noreferrer">' + esc(item.name) + ' · Google Docs dossier</a></li>').join('') + '</ul>';
++  return "<ul>" + ids.map(id => SOURCES[id]).map(([label]) =>
++    '<li><a href="' + esc(MARKET_DOSSIERS[market]) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + "</a></li>").join("") + "</ul>";
+ }
+ 
+ function teamSelector() {
+@@ -3245,13 +3335,14 @@ function progressBar(phase, path) {
+ }
+ 
+ function marketDossier(market, selected) {
++  const marketId = marketList.find(([, item]) => item === market)[0];
+   const profiles = selected ? [[selected, market.profiles[selected]]] : Object.entries(market.profiles);
+   return `<div class="pv-wording">
+     ${facts(market.facts)}
+     ${profiles.map(([id, profile]) => `<article class="pv-dossier"><p class="pv-mono">Profile ${id}</p>
+       <h3>${esc(profile.name)}</h3><p>${esc(profile.journey)}</p><p><strong>Suggested channel</strong> · ${esc(profile.channel)}</p>
+-      <ul>${profile.alternatives.map(([name, detail, link]) => `<li><a href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(name)}</a> · ${esc(detail)}</li>`).join("")}</ul></article>`).join("")}
+-    ${sourceLinks(market.sources)}
++      <ul>${profile.alternatives.map(([name, detail]) => `<li><a href="${esc(MARKET_DOSSIERS[marketId])}" target="_blank" rel="noopener noreferrer">${esc(name)}</a> · ${esc(detail)}</li>`).join("")}</ul></article>`).join("")}
++    ${sourceLinks(market.sources, marketId)}
+   </div>`;
+ }
+ 
+@@ -3391,6 +3482,7 @@ function resultScreen(phase, state, path, record) {
+   const editing = phase.id === "PREP";
+   return stage("Board Brief", record.mode === "practice" ? "Practice outcome" : "Investment hearing", `
+     <div class="pv-record pv-checkpoint"><p class="pv-mono">Your recommendation</p><h3>${esc(outcome[0])}</h3><p>${esc(outcome[1])}</p></div>
++    <div class="pv-actions pv-file-actions">${button("Open report", "open-report", "primary")}</div>
+     ${gameResult(record)}
+     <div class="pv-task"><strong>At the hearing</strong>Three minutes to pitch and one minute for the common question. Show the first customer, two CAGE findings, the Uppsala pathway, what the budget changed and how you handled the emergency.</div>
+     <p><strong>Common question</strong> · ${esc(QUESTION)}</p>
+@@ -3423,6 +3515,7 @@ function renderTeam(now) {
+   return `${stickyBar(record, state, phase, path)}
+     <div class="pv-layout"><div>${body}</div><aside class="pv-sidebar">
+       <section class="pv-sidebar-card"><h3>Decision journal</h3>${logList(path)}
++        ${path.length < ROUNDS.length ? '<div class="pv-actions pv-file-actions">' + button("Open report", "open-report") + '</div>' : ""}
+         ${syncLine(record)}
+       </section>
+       <section class="pv-sidebar-card"><h3>Team materials</h3>
+@@ -3767,6 +3860,16 @@ const controls = {
+     void refreshHostData({render, announce});
+   },
+   materials: renderMaterials,
++  "open-report": async () => {
++    const session = view.record?.session;
++    if (!session) return;
++    const popup = openReportWindow();
++    try {
++      await view.writes;
++      if (view.record?.session !== session) throw new Error("The team session changed. Open the report again from the current game.");
++      writeTeamReport(popup, view.record);
++    } catch (error) { popup.close(); throw error; }
++  },
+   "close-materials": () => ui.materials.close(),
+   "jump-entry": () => {
+     const heading = root.querySelector("#omf-entry-title");
+diff --git a/scripts/build.mjs b/scripts/build.mjs
+index c4cdd04..b249280 100644
+--- a/scripts/build.mjs
++++ b/scripts/build.mjs
+@@ -17,7 +17,7 @@ export const OUTPUT_BLOCKS = {
+ // They are sized to stay near 70 KB each.
+ export const BLOCK_MODULES = {
+   css: ["hash", "tuning", "scenario"],
+-  engine: ["rules", "progress", "clock", "storage", "sync", "presentation"],
++  engine: ["rules", "progress", "clock", "storage", "sync", "presentation", "report"],
+   interface: ["host", "app"]
+ };
+ export const MODULES = Object.values(BLOCK_MODULES).flat();
+diff --git a/src/app.mjs b/src/app.mjs
+index 0b382f5..3594cdc 100644
+--- a/src/app.mjs
++++ b/src/app.mjs
+@@ -1,9 +1,10 @@
+-import { CONFIG, SOURCES, SINGAPORE, MARKETS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION, PROBLEMS } from './scenario.mjs';
++import { CONFIG, SOURCES, SINGAPORE, MARKETS, MARKET_DOSSIERS, BRIEF, ROUNDS, BULLETINS, WORKSHEET, RUBRIC, QUESTION, PROBLEMS } from './scenario.mjs';
+ import { TEAMS, SCHEDULE, OUTCOMES, makeRoom, marketForTable, roomStart, phaseAt, replay, optionsFor, pendingFact,
+   settleDeadlines, lockRound, updateDraft, updateNote, updateBrief, canReadBulletinB, isDraftComplete, validateRecord, contentMismatch, gameScore } from './rules.mjs';
+ import { storageAvailable, getStored, teamKey, readSlot, storeRecord, clearSlot, activeTeam, newId, newRecord, withSaveLock,
+   knownTable, SaveError, recoveryOptions, requestPersistence, readPlayer, writePlayer } from './storage.mjs';
+ import { esc, button, disclosure, facts, stage, interval, countdown } from './presentation.mjs';
++import { openReportWindow, writeTeamReport } from './report.mjs';
+ import { renderHost, handleHostAction, updateHostField, hostClock, refreshHostData } from './host.mjs';
+ import { trueNow, clockStatus, syncClock } from './clock.mjs';
+ import { gameProgress } from './progress.mjs';
+@@ -47,9 +48,17 @@ function renderNotice() {
+   ui.notice.hidden = !ui.notice.textContent;
+ }
+ 
+-function sourceLinks(ids) {
+-  return "<ul>" + ids.map(id => SOURCES[id]).map(([label, url]) =>
+-    '<li><a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + "</a></li>").join("") + "</ul>";
++function readingMarket() {
++  if (view.record) return view.record.market;
++  if (view.me?.team && roomStart(view.me.room) !== null) return marketForTable(view.me.room, view.me.team);
++  return view.entryMode === "practice" ? view.market : null;
++}
++
++function sourceLinks(ids, market = readingMarket()) {
++  if (!market) return '<p>' + ids.map(id => esc(SOURCES[id][0])).join(' · ') + '</p><ul>' + marketList.map(([id, item]) =>
++    '<li><a href="' + esc(MARKET_DOSSIERS[id]) + '" target="_blank" rel="noopener noreferrer">' + esc(item.name) + ' · Google Docs dossier</a></li>').join('') + '</ul>';
++  return "<ul>" + ids.map(id => SOURCES[id]).map(([label]) =>
++    '<li><a href="' + esc(MARKET_DOSSIERS[market]) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + "</a></li>").join("") + "</ul>";
+ }
+ 
+ function teamSelector() {
+@@ -185,13 +194,14 @@ function progressBar(phase, path) {
+ }
+ 
+ function marketDossier(market, selected) {
++  const marketId = marketList.find(([, item]) => item === market)[0];
+   const profiles = selected ? [[selected, market.profiles[selected]]] : Object.entries(market.profiles);
+   return `<div class="pv-wording">
+     ${facts(market.facts)}
+     ${profiles.map(([id, profile]) => `<article class="pv-dossier"><p class="pv-mono">Profile ${id}</p>
+       <h3>${esc(profile.name)}</h3><p>${esc(profile.journey)}</p><p><strong>Suggested channel</strong> · ${esc(profile.channel)}</p>
+-      <ul>${profile.alternatives.map(([name, detail, link]) => `<li><a href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(name)}</a> · ${esc(detail)}</li>`).join("")}</ul></article>`).join("")}
+-    ${sourceLinks(market.sources)}
++      <ul>${profile.alternatives.map(([name, detail]) => `<li><a href="${esc(MARKET_DOSSIERS[marketId])}" target="_blank" rel="noopener noreferrer">${esc(name)}</a> · ${esc(detail)}</li>`).join("")}</ul></article>`).join("")}
++    ${sourceLinks(market.sources, marketId)}
+   </div>`;
+ }
+ 
+@@ -331,6 +341,7 @@ function resultScreen(phase, state, path, record) {
+   const editing = phase.id === "PREP";
+   return stage("Board Brief", record.mode === "practice" ? "Practice outcome" : "Investment hearing", `
+     <div class="pv-record pv-checkpoint"><p class="pv-mono">Your recommendation</p><h3>${esc(outcome[0])}</h3><p>${esc(outcome[1])}</p></div>
++    <div class="pv-actions pv-file-actions">${button("Open report", "open-report", "primary")}</div>
+     ${gameResult(record)}
+     <div class="pv-task"><strong>At the hearing</strong>Three minutes to pitch and one minute for the common question. Show the first customer, two CAGE findings, the Uppsala pathway, what the budget changed and how you handled the emergency.</div>
+     <p><strong>Common question</strong> · ${esc(QUESTION)}</p>
+@@ -363,6 +374,7 @@ function renderTeam(now) {
+   return `${stickyBar(record, state, phase, path)}
+     <div class="pv-layout"><div>${body}</div><aside class="pv-sidebar">
+       <section class="pv-sidebar-card"><h3>Decision journal</h3>${logList(path)}
++        ${path.length < ROUNDS.length ? '<div class="pv-actions pv-file-actions">' + button("Open report", "open-report") + '</div>' : ""}
+         ${syncLine(record)}
+       </section>
+       <section class="pv-sidebar-card"><h3>Team materials</h3>
+@@ -707,6 +719,16 @@ const controls = {
+     void refreshHostData({render, announce});
+   },
+   materials: renderMaterials,
++  "open-report": async () => {
++    const session = view.record?.session;
++    if (!session) return;
++    const popup = openReportWindow();
++    try {
++      await view.writes;
++      if (view.record?.session !== session) throw new Error("The team session changed. Open the report again from the current game.");
++      writeTeamReport(popup, view.record);
++    } catch (error) { popup.close(); throw error; }
++  },
+   "close-materials": () => ui.materials.close(),
+   "jump-entry": () => {
+     const heading = root.querySelector("#omf-entry-title");
+diff --git a/src/host.mjs b/src/host.mjs
+index e1b01f1..c34f2db 100644
+--- a/src/host.mjs
++++ b/src/host.mjs
+@@ -3,6 +3,7 @@ import { TEAMS, SCHEDULE, makeRoom, roomStart, marketForTable, phaseAt, standing
+ import { tuning } from './tuning.mjs';
+ import { hostKey, getStored, putStored } from './storage.mjs';
+ import { esc, button, disclosure, facts, stage, saveFile, interval, countdown, textReport, scoresCsv, scoresSheetTable } from './presentation.mjs';
++import { openReportWindow, writeTeamReport } from './report.mjs';
+ import { trueNow } from './clock.mjs';
+ import { syncEnabled, fetchRoom, fetchRoster, hostCommand, pushScores, recordFromPayload } from './sync.mjs';
+ 
+@@ -156,7 +157,7 @@ function scoresSentText() {
+ 
+ function journalHtml(team) {
+   const record = host.records[team];
+-  return record ? disclosure("Team journal from Google Sheets · " + record.history.length + "/7 decisions", '<p class="pv-worksheet-note">' + esc(textReport(record)) + "</p>") : "";
++  return record ? '<div class="pv-actions pv-file-actions">' + button("Open report", "host-report") + '</div>' + disclosure("Team journal from Google Sheets · " + record.history.length + "/7 decisions", '<p class="pv-worksheet-note">' + esc(textReport(record)) + "</p>") : "";
+ }
+ 
+ function judgeTable(team) {
+@@ -290,7 +291,10 @@ function applyRoster(roster) {
+ }
+ 
+ export async function handleHostAction(id, target, ui) {
+-  if (id === "host-refresh") await refreshHostData(ui);
++  if (id === "host-report") {
++    const record = host.records[host.selected];
++    if (record) writeTeamReport(openReportWindow(), record);
++  } else if (id === "host-refresh") await refreshHostData(ui);
+   else if (id === "host-scores") exportScores();
+   else if (id === "host-scores-ru") exportScores(true);
+   else if (id === "host-scores-sync") {
+diff --git a/src/report.mjs b/src/report.mjs
+new file mode 100644
+index 0000000..4844b8b
+--- /dev/null
++++ b/src/report.mjs
+@@ -0,0 +1,63 @@
++import { CONFIG, MARKETS, MARKET_DOSSIERS, ROUNDS, WORKSHEET, QUESTION } from './scenario.mjs';
++import { replay, OUTCOMES, gameScore } from './rules.mjs';
++import { esc } from './presentation.mjs';
++
++// No state or credentials are stored in the report URL. This is a read-only snapshot.
++export function reportHtml(record, generatedAt = Date.now()) {
++  const {state, path} = replay(record);
++  const market = MARKETS[record.market];
++  const profile = market.profiles[state.profile];
++  const complete = path.length === ROUNDS.length;
++  const outcome = complete ? OUTCOMES[path.at(-1).choice] : null;
++  const paragraph = value => '<p class="written">' + esc(value) + '</p>';
++  const field = (label, value) => value ? '<div class="note"><h3>' + esc(label) + '</h3>' + paragraph(value) + '</div>' : '';
++  const stamp = new Intl.DateTimeFormat('en-GB', {timeZone: 'Europe/Moscow', dateStyle: 'medium', timeStyle: 'short'}).format(generatedAt);
++  const journal = path.map(event => '<article class="decision"><header><p class="eyebrow">' + esc(event.round) +
++    (event.method === 'default' ? ' · Default decision' : '') + '</p><h2>' + esc(event.label) + '</h2>' +
++    '<p>' + event.cost + ' credits spent · ' + event.credits + ' credits remaining</p></header>' +
++    field('Evidence / assumption', event.evidence) + field('Trade-off', event.tradeoff) + field('Simulated result', event.result) +
++    WORKSHEET[event.round].map(([key, label]) => field(label, record.notes[event.round + '.' + key])).join('') + '</article>').join('');
++  return `<!doctype html>
++<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
++<title>Revolut — Team ${esc(record.team)} · ${esc(market.name)} · Board report</title>
++<style>
++*{box-sizing:border-box}body{margin:0;background:#f5efe3;color:#192b3c;font:20px/1.55 system-ui,sans-serif}main{max-width:1120px;margin:auto;padding:40px 32px 80px}h1,h2,h3,p{margin:0 0 16px}h1{font-size:clamp(32px,5vw,54px);line-height:1.12}h2{font-size:28px;line-height:1.25}h3{font-size:19px;margin-bottom:6px}.eyebrow{font-size:14px;text-transform:uppercase;letter-spacing:.08em}.muted{color:#52606b;font-size:16px}.toolbar{display:flex;flex-wrap:wrap;gap:12px;max-width:1120px;margin:auto;padding:20px 32px 0}.toolbar button,.toolbar a{padding:12px 18px;border:1px solid #192b3c;background:#fffaf0;color:inherit;font:inherit;font-size:16px;text-decoration:none;cursor:pointer;border-radius:4px}.toolbar button:focus-visible,.toolbar a:focus-visible{outline:3px solid #c84a32;outline-offset:3px}.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:28px 0}.metric{padding:18px;background:#fffaf0;border:1px solid #c9c3b8}.metric strong{display:block;font-size:32px}.metric span{font-size:16px}.section,.decision{padding:28px 0;border-top:2px solid #192b3c}.decision header{margin-bottom:22px}.note{margin-bottom:18px}.written{white-space:pre-wrap;overflow-wrap:anywhere}a{color:#154c82}footer{border-top:1px solid #c9c3b8;padding-top:24px}body:fullscreen{overflow:auto}html:fullscreen{overflow:auto}@media(max-width:600px){body{font-size:18px}main{padding:28px 18px 60px}.toolbar{padding:16px 18px 0}.metrics{gap:8px}.metric{padding:10px}.metric strong{font-size:28px}.metric span{font-size:14px}h2{font-size:25px}}@media print{body{background:#fff;color:#111;font-size:11pt;line-height:1.4}.toolbar{display:none}main{max-width:none;padding:0}h1{font-size:26pt}h2{font-size:18pt}h3{font-size:12pt}.metrics{gap:8px;margin:16px 0}.metric{padding:10px;background:#fff}.metric strong{font-size:20pt}.metric span,.muted{font-size:10pt}.section,.decision{padding:16px 0}.decision header,.note{break-inside:avoid}h1,h2,h3{break-after:avoid}p{orphans:3;widows:3}a{color:inherit}}
++</style></head><body>
++<nav class="toolbar" aria-label="Report controls"><button type="button" data-report-fullscreen>Full screen</button><button type="button" data-report-print>Print / Save PDF</button><a href="${esc(MARKET_DOSSIERS[record.market])}" target="_blank" rel="noopener noreferrer">${esc(market.name)} dossier</a></nav>
++<main><header><p class="eyebrow">Revolut · One Market First · Board report</p><h1>Team ${esc(record.team)} · ${esc(market.name)}</h1><p>${esc(market.city)} · ${esc(market.currency)}</p><p class="muted">${complete ? 'Completed strategy' : 'Strategy in progress'} · ${path.length} / ${ROUNDS.length} decisions locked<br>Snapshot: ${esc(stamp)} Moscow time. Reopen the report from the game to include later changes.</p></header>
++<div class="metrics"><div class="metric"><strong>${CONFIG.budget}</strong><span>Starting credits</span></div><div class="metric"><strong>${CONFIG.budget - state.credits}</strong><span>Credits spent</span></div><div class="metric"><strong>${state.credits}</strong><span>Credits remaining</span></div></div>
++<section class="section"><h2>First customer</h2>${profile ? '<h3>' + esc(profile.name) + '</h3>' + paragraph(profile.journey) : '<p>Not selected yet.</p>'}</section>
++<section class="section"><h2>Request to the Board</h2>${outcome ? '<h3>' + esc(outcome[0]) + '</h3>' + paragraph(outcome[1]) : '<p>Final funding decision not locked yet.</p>'}${field('Team funding rationale', record.notes['R7.board'])}${field('One-page Board Brief', record.brief)}</section>
++${complete ? '<section class="section"><h2>Simulated game result</h2><p>' + Math.round(gameScore(record).total) + ' / 100</p><p class="muted">This is the simulated game result, not the expert panel’s final grade.</p></section>' : ''}
++<section aria-label="Full decision journal"><h2>Decision sequence and rationale</h2>${journal || '<p>No decisions locked yet.</p>'}</section>
++<footer><h2>Common hearing question</h2>${paragraph(QUESTION)}<p class="muted">Read-only report. Decisions and notes are edited in the game.</p></footer></main></body></html>`;
++}
++
++// Open synchronously in the click handler, before awaiting queued note saves, so mobile browsers allow the tab.
++export function openReportWindow() {
++  const popup = window.open('', '_blank');
++  if (!popup) throw new Error('The report tab was blocked. Allow pop-ups for this page and press Open report again.');
++  popup.opener = null;
++  popup.document.title = 'Preparing team report';
++  popup.document.body.textContent = 'Preparing your report…';
++  return popup;
++}
++
++export function writeTeamReport(popup, record) {
++  if (popup.closed) return;
++  popup.document.open();
++  popup.document.write(reportHtml(record));
++  popup.document.close();
++  popup.document.querySelector('[data-report-print]').addEventListener('click', () => popup.print());
++  const toggle = popup.document.querySelector('[data-report-fullscreen]');
++  if (!popup.document.documentElement.requestFullscreen) toggle.hidden = true;
++  else {
++    toggle.addEventListener('click', async () => {
++      try {
++        if (popup.document.fullscreenElement) await popup.document.exitFullscreen();
++        else await popup.document.documentElement.requestFullscreen();
++      } catch { toggle.textContent = 'Use your browser’s full-screen control'; }
++    });
++    popup.document.addEventListener('fullscreenchange', () => { toggle.textContent = popup.document.fullscreenElement ? 'Exit full screen' : 'Full screen'; });
++  }
++}
+diff --git a/src/scenario.mjs b/src/scenario.mjs
+index 3b70d45..a7507b6 100644
+--- a/src/scenario.mjs
++++ b/src/scenario.mjs
+@@ -6,6 +6,15 @@ export const CONFIG = {
+   maxImportBytes: 512 * 1024
+ };
+ 
++// Regional reading packs include the company, theory and competitor sources.
++// Keep the original source metadata below as provenance; the interface routes reading links here.
++export const MARKET_DOSSIERS = {
++  indonesia: "https://docs.google.com/document/d/1UcbzsmaiIJJYry8H_Vky3vGO9woW55uWVfqxpkfLBRs/edit",
++  philippines: "https://docs.google.com/document/d/1-kG0D1Fb65b2OdcBlc1SUsD4TVhoeM0RIsLplP0wz3U/edit",
++  thailand: "https://docs.google.com/document/d/1WxISSlc86Qc_TqZ-f-Y2fuJx6tEedhBjfmSZI-hM_wQ/edit",
++  vietnam: "https://docs.google.com/document/d/1lNgckXBRgCDCW7nKqKBifU2ROr_gvLgGCNfuzMLk-Ko/edit"
++};
++
+ export const SOURCES = {
+   revolut: ["Revolut Singapore · Account availability", "https://help.revolut.com/en-SG/help/profile-and-plan/profile-plan/verifying-identity/what-countries-are-supported/"],
+   transfers: ["Revolut Singapore · International transfers", "https://help.revolut.com/en-SG/help/transfers/outbound-transfers/how-to-send-money-to-another-bank/how-do-i-send-money-to-a-bank-account/"],
+diff --git a/test/report.test.mjs b/test/report.test.mjs
+new file mode 100644
+index 0000000..d7dd358
+--- /dev/null
++++ b/test/report.test.mjs
+@@ -0,0 +1,134 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { createRequire } from 'node:module';
++import { fileURLToPath } from 'node:url';
++import { CONFIG, MARKETS, MARKET_DOSSIERS, ROUNDS } from '../src/scenario.mjs';
++import { lockRound, updateDraft, replay } from '../src/rules.mjs';
++import { reportHtml } from '../src/report.mjs';
++
++function record(market = 'indonesia') {
++  return {game: CONFIG.game, version: CONFIG.version, mode: 'practice', team: 1, market,
++    room: 'PRACTICE', session: 'report-test', history: [], drafts: {}, notes: {}, brief: '', bulletinB: false};
++}
++
++test('An unfinished report is a partial snapshot with no invented Board decision', () => {
++  const html = reportHtml(record(), 0);
++  assert.match(html, /Strategy in progress/);
++  assert.match(html, /0 \/ 7 decisions locked/);
++  assert.match(html, /Final funding decision not locked yet/);
++  assert.doesNotMatch(html, /Simulated game result/);
++});
++
++test('A complete report includes every decision, rationale, worksheet, actual spend and Board request', () => {
++  let current = record('philippines');
++  const choices = ['A', 'interview', 'pilot', 'reserve', 'keep', 'hold', 'defer'];
++  for (const round of ROUNDS) {
++    if (round.id === 'R6') current.bulletinB = true;
++    current = updateDraft(current, round.id, 'choice', choices[current.history.length], 0);
++    current = updateDraft(current, round.id, 'evidence', 'Evidence for ' + round.id, 0);
++    current = updateDraft(current, round.id, 'tradeoff', 'Trade-off for ' + round.id, 0);
++    current = lockRound(current, round.id, 0);
++  }
++  current.notes['R7.board'] = 'Fund the named Manila preparation milestone';
++  current.brief = 'Our Board Brief';
++  const html = reportHtml(current, 0);
++  const {state, path} = replay(current);
++  assert.ok(state.credits < CONFIG.budget);
++  assert.equal((html.match(/class="decision"/g) || []).length, 7);
++  assert.match(html, /Completed strategy/);
++  assert.match(html, /Fund the named Manila preparation milestone/);
++  assert.match(html, /Our Board Brief/);
++  assert.match(html, new RegExp('<strong>' + state.credits + '</strong><span>Credits remaining'));
++  for (const event of path) {
++    assert.ok(html.includes(event.result.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;')));
++    assert.ok(html.includes('Evidence for ' + event.round));
++    assert.ok(html.includes('Trade-off for ' + event.round));
++  }
++  assert.ok(html.includes(MARKET_DOSSIERS.philippines));
++});
++
++test('Team-authored text is rendered as text and cannot inject script or HTML into the report', () => {
++  const current = record();
++  current.brief = '<script>window.reportAttack=1</script><img src=x onerror=alert(1)>';
++  current.notes['R7.board'] = '<b>Ask</b> & "assumption"';
++  const html = reportHtml(current, 0);
++  assert.doesNotMatch(html, /<script>|<img src=x/);
++  assert.match(html, /&lt;script&gt;/);
++  assert.match(html, /&lt;b&gt;Ask&lt;\/b&gt; &amp; &quot;assumption&quot;/);
++});
++
++let chromium = null;
++try { ({chromium} = createRequire(import.meta.url)('playwright')); } catch { /* optional */ }
++const skip = !chromium && 'Playwright is not installed';
++const pageUrl = 'file://' + fileURLToPath(new URL('../one-market-first.html', import.meta.url));
++
++test('At phone width, all four teams open their own dossier and a separate, safe report with saved notes', {skip}, async () => {
++  const browser = await chromium.launch();
++  try {
++    for (const [market, data] of Object.entries(MARKETS)) {
++      const context = await browser.newContext({viewport: {width: 390, height: 844}});
++      const page = await context.newPage();
++      const errors = [];
++      page.on('pageerror', error => errors.push(error.message));
++      await page.goto(pageUrl);
++      await page.selectOption('[data-entry=market]', market);
++      await page.click('button:has-text("Open practice dashboard")');
++      await page.locator('.pv-sidebar summary', {hasText: 'Market dossier'}).click();
++      const links = await page.locator('.pv-sidebar a[href]').evaluateAll(items => items.map(a => a.href));
++      assert.ok(links.length >= 4);
++      assert.deepEqual([...new Set(links)], [MARKET_DOSSIERS[market]]);
++      await page.click('button[data-action=materials]');
++      const ruleLinks = await page.locator('[data-ui=materials-body] a[href]').evaluateAll(items => items.map(a => a.href));
++      assert.ok(ruleLinks.length >= 8);
++      assert.deepEqual([...new Set(ruleLinks)], [MARKET_DOSSIERS[market]]);
++      await page.click('button[data-action=close-materials]');
++      await page.locator('label.pv-choice .pv-choice-card').first().click();
++      await page.fill('textarea[data-draft=evidence]', 'Saved evidence <b>not markup</b>');
++      await page.fill('textarea[data-draft=tradeoff]', 'Saved trade-off');
++      await page.click('button:has-text("Lock this choice")');
++      const popupPromise = page.waitForEvent('popup');
++      await page.click('button[data-action=open-report]');
++      const report = await popupPromise;
++      await report.locator('h1').waitFor();
++      assert.equal(await report.locator('h1').innerText(), 'Team 1 · ' + data.name);
++      assert.ok((await report.locator('body').innerText()).includes('Saved evidence <b>not markup</b>'));
++      assert.equal(await report.locator('.note b').count(), 0);
++      assert.equal(await report.evaluate(() => window.opener), null);
++      assert.equal(await report.locator('textarea, input').count(), 0);
++      assert.equal(await report.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
++      assert.equal(await report.locator('[data-report-print]').count(), 1);
++      assert.equal(await report.locator('a').getAttribute('href'), MARKET_DOSSIERS[market]);
++      await report.close();
++      assert.match(await page.locator('.pv-sidebar-card').first().innerText(), /Decision journal/);
++      assert.deepEqual(errors, []);
++      await context.close();
++    }
++  } finally { await browser.close(); }
++});
++
++test('The final report contains the latest Board Brief and reports a blocked tab without losing the game', {skip}, async () => {
++  const browser = await chromium.launch();
++  try {
++    const page = await browser.newPage();
++    await page.goto(pageUrl);
++    await page.click('button:has-text("Open practice dashboard")');
++    for (let i = 0; i < ROUNDS.length; i++) {
++      if (i === 5) await page.click('button[data-action=practice-b]');
++      await page.click('button[data-action=practice-default]');
++      await page.click('button[data-action=next-practice]');
++    }
++    await page.fill('textarea[data-brief]', 'Latest brief before opening the report');
++    const popupPromise = page.waitForEvent('popup');
++    await page.click('button[data-action=open-report]');
++    const report = await popupPromise;
++    await report.locator('h1').waitFor();
++    assert.match(await report.locator('main').innerText(), /Latest brief before opening the report/);
++    assert.equal(await report.locator('.decision').count(), 7);
++    assert.match(await report.locator('main').innerText(), /Completed strategy/);
++    await report.close();
++    await page.evaluate(() => { window.open = () => null; });
++    await page.click('button[data-action=open-report]');
++    await page.locator('[data-ui=notice]').filter({hasText: 'tab was blocked'}).waitFor();
++    assert.equal(await page.locator('textarea[data-brief]').inputValue(), 'Latest brief before opening the report');
++  } finally { await browser.close(); }
++});
+-- 
+2.52.0
+
